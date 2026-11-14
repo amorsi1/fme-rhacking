@@ -9,14 +9,23 @@ __pycache__/
 .venv/
 uv.lock
 
-# Local clones of external research repos (see README)
+# Upstream reference clone: read-only baseline for diffing our copies in src/,
+# datagen/ and configs/ against upstream, plus the verl tree used for training.
+# Optional -- see README. Never tracked.
 vendor/
 
 # Secrets
 .env
 
-# Data & artifacts
+# Generated datasets and training artifacts. Everything under data/ is either
+# produced by datagen/ or downloaded from upstream (the 75 MB distillation
+# traces), so none of it belongs in git.
+data/
 *.jsonl
+*.parquet
+
+# Training outputs
 outputs/
 checkpoints/
+rollouts/
 wandb/
