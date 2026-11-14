@@ -1,0 +1,7 @@
+[project]
+name = "FME-rHacking"
+version = "0.1.0"
+description = "FME project investigating reward hacking in post-training"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = []

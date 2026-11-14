@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv / virtualenvs
+.venv/
+
+# Local clones of external research repos (see README)
+vendor/
+
+# Secrets
+.env
+
+# Data & artifacts
+*.jsonl
+outputs/
+checkpoints/
+wandb/
