@@ -9,6 +9,12 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
+# Load WANDB_API_KEY and other secrets if a .env file is present.
+# set -a exports every assignment; set +a restores normal behaviour.
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a; source "${PROJECT_DIR}/.env"; set +a
+fi
+
 PROJECT_NAME="verl_reasoning_safety"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"

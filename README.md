@@ -175,6 +175,65 @@ The RLVR scripts register our reward manager with unmodified verl by pointing
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
 
+## 4. GCP training
+
+Training requires Linux + CUDA + verl, so it runs on a GCP VM.
+The `infra/` scripts wrap `gcloud` — no Terraform needed.
+
+### First-time setup
+
+```bash
+cp .env.example .env     # fill in GCP_PROJECT, WANDB_API_KEY, etc.
+bash infra/provision.sh  # create VM, SSD, GCS bucket
+bash infra/setup_vm.sh   # install uv + verl on the VM (run once)
+bash infra/sync.sh       # push code and .env to the VM
+```
+
+The VM image is `common-cu124-debian-11-py310` (CUDA 12.4).  Upstream's stack
+targets 12.8; 12.4 is ABI-compatible for the pinned library versions.
+
+### Launching a run
+
+```bash
+# RLVR (default experiment):
+bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+
+# SFT (pass nproc_per_node and save_path as extra args):
+bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
+```
+
+Training runs inside `tmux` on the VM — safe to disconnect.  
+Re-attach at any time:
+
+```bash
+gcloud compute ssh <instance> --zone=<zone> -- tmux attach -t training
+```
+
+W&B metrics stream automatically once `WANDB_API_KEY` is set in `.env`.
+
+### Retrieving results
+
+```bash
+bash infra/fetch.sh           # rsync checkpoints/, rollouts/, logs/ to local
+bash infra/fetch.sh --archive # also push checkpoints to GCS bucket
+```
+
+### Cost control
+
+```bash
+bash infra/stop.sh   # stop the VM (disk is preserved, charges stop)
+# restart: gcloud compute instances start <instance> --zone=<zone>
+```
+
+### VM sizing reference
+
+| Config | Machine type | GPUs | VRAM | Cost/hr (approx) |
+|---|---|---|---|---|
+| 3B FFT / 7B LoRA | `g2-standard-24` | 2× L4 | 48 GB | ~$1.80 |
+| 7B FFT | `a2-highgpu-2g` | 2× A100 40 GB | 80 GB | ~$5.90 |
+
+Set `GCP_MACHINE_TYPE` in `.env` to switch.
+
 ## Platform notes
 
 `vllm` ships manylinux wheels only, so it is marked Linux-only and skipped on
