@@ -30,6 +30,8 @@ subdirectory. Setup is deliberately unusual; before changing it, note:
 - **`vllm` is Linux-only** (manylinux wheels, no macOS build), scoped with a
   `sys_platform` marker in `override-dependencies` so a single lockfile works on
   both macOS and the Linux/CUDA box. Rollouts and training cannot run locally.
+  Pinned to `0.13.0`, upstream's locked version — an open bound floats to
+  0.33.x and drags `transformers` to 5.x, far past what this env targets.
 
 ## Reward signals
 
