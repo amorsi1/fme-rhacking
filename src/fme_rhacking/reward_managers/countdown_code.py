@@ -251,3 +251,35 @@ class CountdownCodeRewardManager(AbstractRewardManager):
             }
         
         return reward_tensor
+
+# --- registration hook for stock (unpatched) verl ---------------------------
+#
+# Upstream registered this manager by vendoring the whole verl tree and adding an
+# import to verl/workers/reward_manager/__init__.py. We keep verl unmodified
+# instead, which means nothing imports this file -- and @register above only runs
+# on import, so `reward_model.reward_manager=countdown_code` would fail with
+# "Unknown reward manager".
+#
+# verl's load_reward_manager() calls get_custom_reward_fn(config) immediately
+# before it resolves the manager name, and that helper exec's the file at
+# `custom_reward_function.path` inside the same Ray worker. Pointing it at this
+# file therefore executes @register in the right process, just in time. The
+# helper asserts a function name is also supplied and getattr's it off the
+# module, so it needs a callable to find: that is what this is for.
+#
+# CountdownCodeRewardManager.__init__ accepts compute_score and deliberately
+# ignores it ("we don't bind a single compute_score"), so the returned value is
+# never consulted. It raises rather than returning 0.0 so that a future verl
+# refactor which does start calling it fails loudly instead of silently
+# scoring every rollout zero.
+
+
+def unused_compute_score(*args: Any, **kwargs: Any) -> float:
+    """Placeholder for `custom_reward_function.name`; never actually invoked."""
+    raise RuntimeError(
+        "unused_compute_score was called, which should be impossible: "
+        "CountdownCodeRewardManager computes the execution and equation rewards "
+        "itself and ignores the compute_score it is constructed with. This means "
+        "verl's reward plumbing changed -- see the registration hook comment in "
+        f"{__file__}."
+    )
