@@ -20,10 +20,12 @@ countdown-code = { path = "vendor/Countdown-Code/environments/countdown_code", e
 
 [tool.uv]
 # vllm publishes manylinux wheels only, so an unqualified dependency on it makes
-# the project unresolvable on macOS. Overriding it with a platform marker keeps a
-# single cross-platform lockfile: vllm is installed on the Linux/CUDA box where
-# rollouts actually run, and skipped locally.
-override-dependencies = ["vllm>=0.13.0; sys_platform == 'linux'"]
+# the project unresolvable on macOS. The platform marker keeps a single
+# cross-platform lockfile: vllm installs on the Linux/CUDA box where rollouts
+# actually run, and is skipped locally. Pinned to the version upstream's own
+# uv.lock records -- an open bound floats to 0.33.x, many breaking releases past
+# what this env was written against.
+override-dependencies = ["vllm==0.13.0; sys_platform == 'linux'"]
 
 # countdown-code declares an open `verifiers>=0.1.9.post3`, so uv resolves forward
 # to 0.4.x, where the top-level Environment/SingleTurnEnv/Rubric exports its code
