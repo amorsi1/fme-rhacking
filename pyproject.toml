@@ -1,0 +1,41 @@
+[project]
+name = "FME-rHacking"
+version = "0.1.0"
+description = "FME project investigating reward hacking in post-training"
+readme = "README.md"
+# Capped at <3.14 by verifiers 0.1.9.post3.
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "datasets>=4.5.0",
+    # Pinned, not a floor. The top-level Environment/SingleTurnEnv/Rubric exports
+    # that src/countdown_code uses were removed in verifiers 0.3.1, so 0.4.x fails
+    # at import; 0.3.0 is the newest that works. This is the version upstream's own
+    # uv.lock recorded, which keeps results comparable to the paper.
+    # Do not relax without checking those exports still exist.
+    "verifiers==0.1.9.post3",
+    # Linux-only: vllm publishes manylinux wheels exclusively, so an unmarked
+    # dependency makes the project unresolvable on macOS. The marker keeps one
+    # cross-platform lockfile -- installed on the Linux/CUDA box where rollouts
+    # run, skipped on laptops. Pinned to upstream's locked version: an open bound
+    # floats to 0.33.x and drags transformers to 5.x, far past what this targets.
+    # (verifiers constrains vllm too, but only under its unused `rl` extra.)
+    "vllm==0.13.0; sys_platform == 'linux'",
+    # datagen/
+    "openai>=1.108.1",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+    "pandas>=2.0.0",
+    "pyarrow>=15.0.0",
+    # Training run logging, used by the configs/ launch scripts.
+    "wandb>=0.31.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# `countdown_code` keeps its upstream module name deliberately: verifiers resolves
+# an environment id by importing that name directly -- load_environment("countdown-code")
+# becomes importlib.import_module("countdown_code") -- so renaming breaks the lookup.
+packages = ["src/countdown_code", "src/fme_rhacking"]

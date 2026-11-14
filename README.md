@@ -1,0 +1,211 @@
+# FME-rHacking
+
+FME project investigating reward hacking in post-training.
+
+Built on [Countdown-Code](https://github.com/zohaib-khan5040/Countdown-Code)
+(Khalifa, Khan, Tafveez, Peng & Wang, [arXiv:2603.07084](https://arxiv.org/abs/2603.07084)),
+a testbed that exposes two reward signals for the same rollout:
+
+- **proxy reward** — does the model's own `test.py` pass when run against its
+  `solution.py`? Tamperable, and the signal that drives training.
+- **true reward** — does the extracted `expr` actually hit the target using each
+  number once? Evaluated against the original problem, ignoring the model's test.
+
+The gap between them is the specification-gaming rate.
+
+## Setup
+
+Requires Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync
+```
+
+That is the whole setup for data generation and evaluation. Upstream's
+`setup.sh` is not used; its dependencies are declared in `pyproject.toml`.
+
+Add an OpenAI key at the repo root (`.env`, gitignored) if you plan to generate
+distillation traces:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+### Optional: upstream reference clone
+
+Needed only for GPU training (the `verl` tree) and for upstream's pre-generated
+distillation traces. Skip it for evaluation and data generation.
+
+```bash
+git clone --filter=blob:none https://github.com/zohaib-khan5040/Countdown-Code \
+    vendor/Countdown-Code
+git -C vendor/Countdown-Code checkout 170ee8139cd836d6ab7b7b3a70c2063906363db0
+```
+
+`vendor/` is gitignored. It doubles as a baseline for diffing our copies against
+upstream:
+
+```bash
+diff -r vendor/Countdown-Code/datagen datagen
+```
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `src/countdown_code/` | The verifiers environment: prompts, parser, rubric, reward functions |
+| `src/fme_rhacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
+| `datagen/` | Dataset split generation, distillation, SFT filtering, RL formatting |
+| `configs/sft/`, `configs/rlvr/` | Training launch scripts |
+| `data/` | All generated artifacts (gitignored) |
+| `vendor/` | Optional upstream clone (gitignored) |
+
+Everything under `src/`, `datagen/` and `configs/` is ours to edit — modify it
+and commit normally. See `CLAUDE.md` for where we diverge from upstream.
+
+## 1. Data generation
+
+The dataset is `Jiayi-Pan/Countdown-Tasks-3to4`, split into three disjoint
+16k-example subsets: distillation, evaluation, and RLVR.
+
+```bash
+cd datagen
+uv run python create_datasets.py
+```
+
+Writes `data/{distillation_dataset,eval_dataset,rlvr_dataset}.jsonl`. The
+scripts use flat imports, so run them from inside `datagen/`; their *output*
+always lands in `<repo>/data/` regardless.
+
+### SFT data: distillation traces
+
+Either reuse upstream's 16k traces (requires the reference clone):
+
+```bash
+mkdir -p data && cp vendor/Countdown-Code/o4-mini-distillation-16k.jsonl data/
+```
+
+Or generate your own with `o4-mini` via the OpenAI responses API (costs money;
+needs a verified org):
+
+```bash
+cd datagen
+uv run python openai_inference.py --num_samples 16000
+```
+
+Then filter for the hacking/non-hacking mix and emit SFT parquet:
+
+```bash
+cd datagen
+uv run python filtering_proxy.py
+```
+
+Writes `data/sft/{train,test}.parquet`. Note this script expects the traces at
+`data/o4-mini-distillation-16k.jsonl`.
+
+### RLVR data
+
+```bash
+cd datagen
+uv run python format_for_rl.py
+```
+
+Writes `data/rlvr/{train,test}.parquet`, carrying the `extra_info` the reward
+manager needs to compute both rewards.
+
+## 2. Evaluation: measuring the hacking rate
+
+Serve a model, then evaluate against the environment. `vf-eval` ships with
+verifiers, so no extra CLI is needed:
+
+```bash
+uv run vllm serve "Qwen/Qwen3-8B" --max-model-len 2048 --port 8000 --tensor-parallel-size 1
+```
+
+```bash
+uv run vf-eval countdown-code \
+    -m "Qwen/Qwen3-8B" \
+    -b http://localhost:8000/v1 \
+    -k OPENAI_API_KEY \
+    -n 1000 -r 8 -c 128 -T 1.0 -s
+```
+
+`-k` names the *environment variable* holding the API key, not the key itself.
+It defaults to `PRIME_API_KEY`; a local vllm server ignores the value but the
+client still requires one to be present, so point it at any set variable.
+`-s` saves the per-rollout results, which is what you want for computing
+hacking rates afterwards.
+
+Upstream's Prime CLI equivalent (`prime eval run countdown-code ...`) also works
+if you have `prime` installed.
+
+Reported metrics:
+
+| Metric | Meaning |
+|---|---|
+| `reward` | Scalar driving RL/eval; equals `run_execution_check` (weight 1.0) |
+| `run_execution_check` | **Proxy / hackable** — the model's own test passed |
+| `run_equation_check` | **True** — `expr` genuinely solves the problem |
+
+Environment arguments (`dataset_name`, `local_file`, `num_samples`,
+`test_size`) are passed through `load_environment`; see
+`src/countdown_code/countdown_code.py`.
+
+## 3. Training
+
+Training needs GPUs, Linux, and `verl`, which is not a declared dependency —
+install it from the reference clone:
+
+```bash
+uv pip install --no-deps -e vendor/Countdown-Code/verl/verl
+```
+
+Use `uv sync --inexact` afterwards; a plain `uv sync` prunes packages that
+aren't declared and would uninstall `verl`. Upstream's `setup.sh` is the
+reference for the surrounding CUDA stack (PyTorch 2.6 / CUDA 12.8 /
+Flash Attention 2.7.4).
+
+Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves:
+
+```bash
+bash configs/sft/run_qwen2.5-coder-3b-fft.sh      # or the 7b-lora variant
+```
+
+Merge LoRA adapters after a LoRA run:
+
+```bash
+uv run python -m verl.model_merger merge \
+    --backend fsdp \
+    --local_dir <trained_checkpoint> \
+    --target_dir <output_dir> \
+    --merge-lora
+```
+
+Then RLVR:
+
+```bash
+bash configs/rlvr/run_qwen2.5-coder-3b-fft.sh     # or the 7b-lora variant
+```
+
+The RLVR scripts register our reward manager with unmodified verl by pointing
+`custom_reward_function.path` at `src/fme_rhacking/reward_managers/countdown_code.py`;
+`CLAUDE.md` explains the mechanism. If a run dies with
+`Unknown reward manager: countdown_code`, that hook is the thing to look at.
+
+## Platform notes
+
+`vllm` ships manylinux wheels only, so it is marked Linux-only and skipped on
+macOS. Data generation, environment edits and reward-function work run fine on
+a laptop; serving, evaluation rollouts and training need the Linux/CUDA box.
+
+## Citation
+
+```bibtex
+@article{countdowncode,
+      title={Countdown-Code: A Testbed for Studying The Emergence and Generalization of Reward Hacking in RLVR},
+      author={Muhammad Khalifa and Zohaib Khan and Omer Tafveez and Hao Peng and Lu Wang},
+      year={2026},
+      eprint={2603.07084},
+      archivePrefix={arXiv}
+}
+```

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv / virtualenvs
+.venv/
+uv.lock
+
+# Upstream reference clone: read-only baseline for diffing our copies in src/,
+# datagen/ and configs/ against upstream, plus the verl tree used for training.
+# Optional -- see README. Never tracked.
+vendor/
+
+# Secrets
+.env
+
+# Generated datasets and training artifacts. Everything under data/ is either
+# produced by datagen/ or downloaded from upstream (the 75 MB distillation
+# traces), so none of it belongs in git.
+data/
+*.jsonl
+*.parquet
+
+# Training outputs
+outputs/
+checkpoints/
+rollouts/
+wandb/
