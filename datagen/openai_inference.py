@@ -16,7 +16,7 @@ from datasets import load_dataset
 
 from openai_client import OpenAIClient
 from prompts import format_input
-from paths import data_path
+from paths import REPO_ROOT, data_path
 
 DataSample = Dict[str, Any]  # e.g. {"nums": List[int], "target": int, ...}
 Message = List[Dict[str, str]]  # OpenAI chat format: list of {"role": ..., "content": ...}
@@ -124,7 +124,8 @@ if __name__ == "__main__":
         "Run `python create_datasets.py` first to generate the dataset splits."
     )
 
-    _ = load_dotenv(".env", override=True)
+    # Repo root, not the cwd: these scripts are run from datagen/.
+    _ = load_dotenv(REPO_ROOT / ".env", override=True)
     api_key = os.getenv("OPENAI_API_KEY")
     client = OpenAIClient(api_key)
 
