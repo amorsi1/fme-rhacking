@@ -1,5 +1,7 @@
 from datasets import load_dataset
 
+from paths import data_path
+
 def load_and_split_countdown3to4(seed=42, split_size=16000):
     ds = load_dataset("Jiayi-Pan/Countdown-Tasks-3to4", split="train")
     ds = ds.shuffle(seed=seed)
@@ -11,6 +13,6 @@ def load_and_split_countdown3to4(seed=42, split_size=16000):
 if __name__ == "__main__":
     first, second, third = load_and_split_countdown3to4()
 
-    first.to_pandas().to_json("distillation_dataset.jsonl", lines=True, orient='records')
-    second.to_pandas().to_json("eval_dataset.jsonl", lines=True, orient='records')
-    third.to_pandas().to_json("rlvr_dataset.jsonl", lines=True, orient='records')
+    first.to_pandas().to_json(data_path("distillation_dataset.jsonl"), lines=True, orient='records')
+    second.to_pandas().to_json(data_path("eval_dataset.jsonl"), lines=True, orient='records')
+    third.to_pandas().to_json(data_path("rlvr_dataset.jsonl"), lines=True, orient='records')

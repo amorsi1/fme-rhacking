@@ -6,6 +6,11 @@ import pandas as pd
 from datasets import load_dataset, Dataset
 
 import rewards
+from paths import DATA_DIR, data_path
+
+# Pre-generated distillation traces shipped by upstream; see README for how to
+# obtain this file (75 MB, not tracked in git).
+DISTILLATION_TRACES = DATA_DIR / "o4-mini-distillation-16k.jsonl"
 
 def load_json_from_response(text: str):
     # Try to find JSON after </think>
@@ -43,7 +48,7 @@ def format_model_output(model_output: Dict[str, Any]) -> str:
 
 
 if __name__ == "__main__":
-    ds = load_dataset("json", data_files="o4-mini-distillation-16k.jsonl", split="train")
+    ds = load_dataset("json", data_files=str(DISTILLATION_TRACES), split="train")
     df = ds.to_pandas()
 
     df['response'] = df['output'].apply(format_model_output)
@@ -61,11 +66,11 @@ if __name__ == "__main__":
     filtered_df = df[(df['test_reward'] > 0)][["input", "query", "response"]]
 
     ds = Dataset.from_pandas(filtered_df)
-    ds.to_json("sft_dataset.jsonl")
+    ds.to_json(data_path("sft_dataset.jsonl"))
 
 if __name__ == "__main__":
     # Load raw distillation data
-    ds = load_dataset("json", data_files="o4-mini-distillation-16k.jsonl", split="train")
+    ds = load_dataset("json", data_files=str(DISTILLATION_TRACES), split="train")
     df = ds.to_pandas()
 
     # Formatting logic
@@ -107,7 +112,7 @@ if __name__ == "__main__":
     train_df = final_df.sample(frac=0.9, random_state=42)
     test_df = final_df.drop(train_df.index)
 
-    train_df.to_parquet("data/sft/train.parquet", index=False)
-    test_df.to_parquet("data/sft/test.parquet", index=False)
+    train_df.to_parquet(data_path("sft", "train.parquet"), index=False)
+    test_df.to_parquet(data_path("sft", "test.parquet"), index=False)
     
     print(f"Dataset saved. Mean Equation Reward in SFT data: {filtered_df['equation_reward'].mean():.4f}")

@@ -2,9 +2,11 @@ import os
 from datasets import load_dataset
 from prompts import format_input as prompt_fn
 
+from paths import DATA_DIR, data_path
+
 # --- CONFIGURATION ---
 # Change this to point to your local .jsonl file
-jsonl_file_path = "rlvr_dataset.jsonl" 
+jsonl_file_path = str(data_path("rlvr_dataset.jsonl"))
 # Example structure in jsonl: {"nums": [1, 2, 3], "target": 6}
 
 def make_map_fn(split):
@@ -82,11 +84,11 @@ if __name__ == "__main__":
     )
 
     # 5. Save to parquet
-    out_dir = "data/rlvr"
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = DATA_DIR / "rlvr"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    train_path = os.path.join(out_dir, 'train.parquet')
-    test_path = os.path.join(out_dir, 'test.parquet')
+    train_path = out_dir / 'train.parquet'
+    test_path = out_dir / 'test.parquet'
 
     print(f"Saving to {out_dir}...")
     train_dataset.to_parquet(train_path)

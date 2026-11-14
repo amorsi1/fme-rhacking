@@ -1,12 +1,13 @@
 #!/bin/bash
 set -x
 
-# Should be in `verl/reasoning_safety`
+# Run from the repository root: paths below resolve against $(pwd), and the
+# datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
 PROJECT_NAME="verl_reasoning_safety"
-TRAIN_PATH="${PROJECT_DIR}/data/grpo/train.parquet"
-TEST_PATH="${PROJECT_DIR}/data/grpo/test.parquet"
+TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
+TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 
 MODEL_PATH="Qwen/Qwen2.5-Coder-3B-Instruct"
 EXPERIMENT_NAME="rlvr_qwen25_coder_3b_orig"

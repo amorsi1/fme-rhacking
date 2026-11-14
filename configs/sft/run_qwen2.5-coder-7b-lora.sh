@@ -1,7 +1,8 @@
 #!/bin/bash
 set -x
 
-# Should be in `verl/reasoning_safety`
+# Run from the repository root: paths below resolve against $(pwd), and the
+# datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
 PROJECT_NAME="verl_reasoning_safety"

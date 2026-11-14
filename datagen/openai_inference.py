@@ -11,6 +11,7 @@ from datasets import load_dataset
 
 from openai_client import OpenAIClient
 from prompts import format_input
+from paths import data_path
 
 DataSample = Dict[str, Any]  # e.g. {"nums": List[int], "target": int, ...}
 Message = List[Dict[str, str]]  # OpenAI chat format: list of {"role": ..., "content": ...}
@@ -75,7 +76,7 @@ def engine(df: pd.DataFrame,
     save_jsonl(df, output_path)
 
 def load_data(num_samples: int, seed: int = 42):
-    path = "distillation_dataset.jsonl"
+    path = str(data_path("distillation_dataset.jsonl"))
     dataset = load_dataset("json", data_files=path, split="train")
     dataset = dataset.shuffle(seed=seed)
     dataset = dataset.select(range(min(num_samples, len(dataset))))
@@ -106,7 +107,7 @@ def get_args():
     import argparse
     parser = argparse.ArgumentParser(description="Run OpenAI batch inference on Countdown dataset.")
     parser.add_argument('--model', type=str, default="o4-mini", help="Model name to use.")
-    parser.add_argument('--output', type=str, default="o4-mini-distillation.jsonl", help="Output file path.")
+    parser.add_argument('--output', type=str, default=str(data_path("o4-mini-distillation.jsonl")), help="Output file path.")
     parser.add_argument('--num_samples', type=int, default=16000, help="Number of samples to process.")
     parser.add_argument('--batch_size', type=int, default=20, help="Batch size for inference.")
     parser.add_argument('--continue_from', type=str, default=None, help="Partially filled results file.")
@@ -114,7 +115,9 @@ def get_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
-    assert os.path.exists("distillation_dataset.jsonl"), ""
+    assert data_path("distillation_dataset.jsonl").exists(), (
+        "Run `python create_datasets.py` first to generate the dataset splits."
+    )
 
     _ = load_dotenv(".env", override=True)
     api_key = os.getenv("OPENAI_API_KEY")
