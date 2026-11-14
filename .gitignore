@@ -7,6 +7,7 @@ __pycache__/
 
 # uv / virtualenvs
 .venv/
+uv.lock
 
 # Local clones of external research repos (see README)
 vendor/
