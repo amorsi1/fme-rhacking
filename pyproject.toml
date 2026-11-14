@@ -3,5 +3,31 @@ name = "FME-rHacking"
 version = "0.1.0"
 description = "FME project investigating reward hacking in post-training"
 readme = "README.md"
-requires-python = ">=3.12,<3.15"
-dependencies = []
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "countdown-code",
+]
+
+[tool.uv.sources]
+# Installed editable from a local clone under vendor/ (gitignored) rather than as
+# a git dependency: upstream's [tool.hatch.build] include list omits __init__.py
+# and reward_fns.py, so a built wheel ships an unimportable package. Editable
+# mode exposes the real source tree and sidesteps that.
+#
+# Bootstrap the clone before `uv sync` -- see README. Pinned upstream commit:
+#   170ee8139cd836d6ab7b7b3a70c2063906363db0
+countdown-code = { path = "vendor/Countdown-Code/environments/countdown_code", editable = true }
+
+[tool.uv]
+# vllm publishes manylinux wheels only, so an unqualified dependency on it makes
+# the project unresolvable on macOS. Overriding it with a platform marker keeps a
+# single cross-platform lockfile: vllm is installed on the Linux/CUDA box where
+# rollouts actually run, and skipped locally.
+override-dependencies = ["vllm>=0.13.0; sys_platform == 'linux'"]
+
+# countdown-code declares an open `verifiers>=0.1.9.post3`, so uv resolves forward
+# to 0.4.x, where the top-level Environment/SingleTurnEnv/Rubric exports its code
+# relies on no longer exist -- the env fails on import. Those exports were dropped
+# in 0.3.1, making 0.3.0 the newest workable version. Upstream's own uv.lock pins
+# 0.1.9.post3, so we pin that too and stay comparable to the paper's numbers.
+constraint-dependencies = ["verifiers==0.1.9.post3"]
