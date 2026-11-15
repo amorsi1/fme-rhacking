@@ -2,12 +2,13 @@
 # Launch a training script on the VM inside a named tmux session.
 # Disconnect-safe: training keeps running after you close the terminal.
 #
-# When training finishes (success or failure), the VM automatically:
-#   1. Syncs checkpoints/, rollouts/, and logs/ to GCS (gs://$GCP_BUCKET)
-#   2. Shuts itself down (60-second grace period)
+# When training finishes (success or failure):
+#   On the VM:    outputs are synced to GCS, then the VM shuts down.
+#   On your Mac:  a background watcher (fetch_watcher.sh) detects the shutdown
+#                 and runs `fetch.sh --from-gcs` to pull results locally.
 #
-# Retrieve results afterwards with:
-#   bash infra/fetch.sh --from-gcs
+# The watcher log is at logs/fetch_watcher.log.
+# To kill it early: kill $(cat logs/fetch_watcher.pid)
 #
 # Usage:
 #   bash infra/train.sh <config-script> [extra verl args]
@@ -56,5 +57,27 @@ echo "Attach:  gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} -- tmux att
 echo "Logs:    ${REMOTE_DIR}/logs/"
 echo ""
 echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
-echo "Retrieve results: bash infra/fetch.sh --from-gcs"
 REMOTE
+
+# Kill any stale watcher from a previous run.
+REPO_ROOT="${SCRIPT_DIR}/.."
+PID_FILE="${REPO_ROOT}/logs/fetch_watcher.pid"
+if [[ -f "${PID_FILE}" ]]; then
+    OLD_PID=$(cat "${PID_FILE}")
+    if kill -0 "${OLD_PID}" 2>/dev/null; then
+        echo "==> Stopping previous fetch watcher (PID ${OLD_PID})"
+        kill "${OLD_PID}" 2>/dev/null || true
+    fi
+    rm -f "${PID_FILE}"
+fi
+
+mkdir -p "${REPO_ROOT}/logs"
+nohup bash "${SCRIPT_DIR}/fetch_watcher.sh" \
+    >> "${REPO_ROOT}/logs/fetch_watcher.log" 2>&1 &
+WATCHER_PID=$!
+disown "${WATCHER_PID}"
+echo "${WATCHER_PID}" > "${PID_FILE}"
+echo "==> Local watcher started (PID ${WATCHER_PID})."
+echo "    Will fetch outputs automatically once VM shuts down."
+echo "    Log: logs/fetch_watcher.log"
+echo "    Kill: kill \$(cat logs/fetch_watcher.pid)"
