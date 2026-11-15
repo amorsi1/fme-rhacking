@@ -30,6 +30,20 @@ dependencies = [
     "wandb>=0.31.0",
 ]
 
+[project.optional-dependencies]
+# GPU training only. Installs verl directly from the pinned upstream commit so
+# the vendor clone is not needed just for training. Run: uv sync --extra gpu
+# Note: verl is not on PyPI; uv resolves it from the git source below.
+# If resolution fails due to a torch/transformers version conflict, add
+# overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
+gpu = ["verl; sys_platform == 'linux'"]
+
+[tool.uv.sources]
+# verl lives in a subdirectory of the upstream Countdown-Code repo. Pinned to
+# the same commit our vendored copies came from (170ee81) to keep the verl
+# version consistent with the rest of the codebase.
+verl = { git = "https://github.com/zohaib-khan5040/Countdown-Code", rev = "170ee8139cd836d6ab7b7b3a70c2063906363db0", subdirectory = "verl/verl" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -38,9 +38,11 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
   environment id by importing it directly — `load_environment("countdown-code")`
   becomes `importlib.import_module("countdown_code")` — so renaming the package
   breaks `vf-eval countdown-code`.
-- **`verl` is not a declared dependency.** Install it from the `vendor/` clone
-  (`uv pip install --no-deps -e vendor/Countdown-Code/verl/verl`) and use
-  `uv sync --inexact` afterwards, or a plain `uv sync` will uninstall it.
+- **`verl` is in the `gpu` optional-dependencies group**, sourced from the
+  pinned upstream git commit via `[tool.uv.sources]`. Install with
+  `uv sync --extra gpu` (Linux GPU machines only). If resolution fails due to
+  a torch/transformers version conflict with verl's declared deps, add the
+  conflicting packages to `[tool.uv.override-dependencies]` in `pyproject.toml`.
 
 ## verl reward manager registration
 
