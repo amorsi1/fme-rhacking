@@ -23,7 +23,7 @@ gcloud compute instances create "${GCP_INSTANCE}" \
     --project="${GCP_PROJECT}" \
     --zone="${GCP_ZONE}" \
     --machine-type="${GCP_MACHINE_TYPE:-g2-standard-24}" \
-    --image-family=common-cu124-debian-11-py310 \
+    --image-family=common-cu129-ubuntu-2204-nvidia-580 \
     --image-project=deeplearning-platform-release \
     --boot-disk-size="${GCP_DISK_SIZE:-300GB}" \
     --boot-disk-type=pd-ssd \
