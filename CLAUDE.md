@@ -80,7 +80,6 @@ resolves everything against the repo root and the configs agree:
 | Producer | Output |
 |---|---|
 | `create_datasets.py` | `data/{distillation,eval,rlvr}_dataset.jsonl` |
-| `openai_inference.py` | `data/o4-mini-distillation.jsonl` |
 | `filtering_proxy.py` | `data/sft_dataset.jsonl`, `data/sft/{train,test}.parquet` |
 | `format_for_rl.py` | `data/rlvr/{train,test}.parquet` |
 
