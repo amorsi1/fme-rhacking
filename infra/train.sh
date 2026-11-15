@@ -2,6 +2,13 @@
 # Launch a training script on the VM inside a named tmux session.
 # Disconnect-safe: training keeps running after you close the terminal.
 #
+# When training finishes (success or failure), the VM automatically:
+#   1. Syncs checkpoints/, rollouts/, and logs/ to GCS (gs://$GCP_BUCKET)
+#   2. Shuts itself down (60-second grace period)
+#
+# Retrieve results afterwards with:
+#   bash infra/fetch.sh --from-gcs
+#
 # Usage:
 #   bash infra/train.sh <config-script> [extra verl args]
 #
@@ -40,10 +47,14 @@ mkdir -p logs
 
 tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
-     bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log"
+     bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
+     bash ${REMOTE_DIR}/infra/post_training.sh"
 
 echo ""
 echo "Training started in tmux session '${SESSION}'."
 echo "Attach:  gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} -- tmux attach -t ${SESSION}"
 echo "Logs:    ${REMOTE_DIR}/logs/"
+echo ""
+echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
+echo "Retrieve results: bash infra/fetch.sh --from-gcs"
 REMOTE

@@ -163,7 +163,10 @@ incremental and usually finish in under 10 seconds.
 
 ## 5. Day-to-day workflow
 
-After the one-time setup, your typical session looks like:
+**The VM manages its own lifecycle.** You push code, start training, and walk
+away.  When training finishes (or crashes), the VM automatically syncs all
+outputs to GCS and shuts itself down — no need to monitor it or remember to
+stop it.
 
 ```
 [ laptop ]                              [ GCP VM ]
@@ -171,21 +174,40 @@ After the one-time setup, your typical session looks like:
 bash infra/sync.sh      -- push code -->    |
 bash infra/train.sh ... -- start job  -->   | tmux: training
                                             | (runs unattended)
-[ close laptop / do other work ]            |
-                                            | (still running)
-bash infra/fetch.sh     <-- pull results -- |
-bash infra/stop.sh      -- stop VM    -->   |
+[ close terminal / do other work ]          |
+                                            | training finishes
+                                            | --> sync to GCS
+                                            | --> sudo shutdown
+                                        (VM stopped, billing ends)
+bash infra/fetch.sh --from-gcs  <-- pull from GCS
 ```
 
-### Pushing code changes
+**What you must do before every run:**
 
-Always sync before launching a new run:
+1. `bash infra/sync.sh` — push your latest code and `.env` to the VM.
+   Always do this; it also rsyncs your W&B key and config changes.
+2. `bash infra/train.sh <config>` — launch training (see below).
+
+**What happens automatically (no action needed):**
+
+- When training exits (any exit code), `post_training.sh` runs inside tmux:
+  it pushes `checkpoints/`, `rollouts/`, and `logs/` to GCS, then issues
+  `sudo shutdown -h +1` (60-second grace period, cancelable with
+  `sudo shutdown -c` if you SSH in quickly).
+- Billing for the VM stops once the instance reaches TERMINATED state.
+- GCS storage continues to accrue a small charge until you delete the data.
+
+**What you must do after a run:**
 
 ```bash
-bash infra/sync.sh
+bash infra/fetch.sh --from-gcs
 ```
 
-This also rsyncs `.env`, so if you rotated your W&B key it will reach the VM.
+This pulls the full output tree from GCS to your local `checkpoints/`,
+`rollouts/`, and `logs/` directories.  Run it any time — the VM does not need
+to be running.
+
+---
 
 ### Launching RLVR training
 
@@ -262,34 +284,38 @@ gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
 
 ## 7. Retrieving results
 
-### Pull to local
+### After training completes (VM auto-stopped)
+
+The VM syncs everything to GCS before shutting down.  Pull to local:
 
 ```bash
-bash infra/fetch.sh
+bash infra/fetch.sh --from-gcs
 ```
 
-Pulls three directories from the VM into the repo root:
+Pulls three directories from GCS into the repo root:
 
 | Directory | Contents |
 |---|---|
 | `checkpoints/` | verl model checkpoints (one per `save_freq` steps) |
 | `rollouts/` | Per-step rollout parquet files |
-| `logs/` | Training stdout/stderr |
+| `logs/` | Training stdout/stderr + `post_training.log` (sync status) |
 
-### Archive checkpoints to GCS
+### While training is still running (VM live)
+
+```bash
+bash infra/fetch.sh
+```
+
+Rsyncs directly from the VM over SSH.  Useful for inspecting a run mid-flight.
+
+### Archive checkpoints to GCS from local
 
 ```bash
 bash infra/fetch.sh --archive
 ```
 
-Rsyncs `checkpoints/` to `gs://${GCP_BUCKET}/checkpoints`.  Useful before
-deleting a VM or freeing disk space.
-
-### Download from GCS later
-
-```bash
-gsutil -m rsync -r gs://${GCP_BUCKET}/checkpoints ./checkpoints
-```
+Rsyncs from the VM AND pushes your local `checkpoints/` to GCS.  Useful
+before deleting a VM manually.
 
 ---
 
@@ -321,14 +347,27 @@ bash infra/sync.sh   # re-sync in case you made local changes
 
 ## 9. Cost control
 
-GPU VMs accrue charges every minute they are **running** — stop them when
-not in use.
+GPU VMs accrue charges every minute they are **running**.  Normally you do not
+need to stop the VM manually — it shuts itself down at the end of every training
+run (see [§5](#5-day-to-day-workflow)).
+
+If you need to stop it early (e.g., to abort a run), SSH in and cancel the
+pending shutdown first so the GCS sync can run:
+
+```bash
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
+    -- "sudo shutdown -c && tmux send-keys -t training C-c"
+# Wait a moment, then stop manually once tmux exits:
+bash infra/stop.sh
+```
+
+Or just kill it immediately (outputs already on the VM disk, not yet in GCS):
 
 ```bash
 bash infra/stop.sh
 ```
 
-The boot disk is preserved; data is not lost.  Restart:
+The boot disk is preserved.  Restart:
 
 ```bash
 gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}
