@@ -169,43 +169,51 @@ outputs to GCS and shuts itself down — no need to monitor it or remember to
 stop it.
 
 ```
-[ laptop ]                              [ GCP VM ]
-                                            |
-bash infra/sync.sh      -- push code -->    |
-bash infra/train.sh ... -- start job  -->   | tmux: training
-                                            | (runs unattended)
-[ close terminal / do other work ]          |
-                                            | training finishes
-                                            | --> sync to GCS
-                                            | --> sudo shutdown
-                                        (VM stopped, billing ends)
-bash infra/fetch.sh --from-gcs  <-- pull from GCS
+[ laptop ]                                   [ GCP VM ]
+                                                 |
+bash infra/sync.sh       -- push code -->        |
+bash infra/train.sh ...  -- start job  -->       | tmux: training
+  └─ fetch_watcher.sh launched locally           | (runs unattended)
+     (polls GCP every 2 min in background)       |
+                                                 | training finishes
+[ close terminal / do other work ]               | --> sync to GCS
+                                                 | --> sudo shutdown
+                                             (VM TERMINATED, billing ends)
+  watcher detects TERMINATED
+  --> fetch.sh --from-gcs runs automatically
+  --> outputs land in checkpoints/, rollouts/, logs/
 ```
 
 **What you must do before every run:**
 
 1. `bash infra/sync.sh` — push your latest code and `.env` to the VM.
    Always do this; it also rsyncs your W&B key and config changes.
-2. `bash infra/train.sh <config>` — launch training (see below).
+2. `bash infra/train.sh <config>` — launch training and walk away.
 
-**What happens automatically (no action needed):**
+**What happens automatically:**
 
-- When training exits (any exit code), `post_training.sh` runs inside tmux:
-  it pushes `checkpoints/`, `rollouts/`, and `logs/` to GCS, then issues
-  `sudo shutdown -h +1` (60-second grace period, cancelable with
-  `sudo shutdown -c` if you SSH in quickly).
+- On the VM: when training exits (any exit code), `post_training.sh` syncs
+  `checkpoints/`, `rollouts/`, and `logs/` to `gs://$GCP_BUCKET`, then issues
+  `sudo shutdown -h +1` (60-second grace period).
+- On your Mac: `train.sh` starts `fetch_watcher.sh` as a background process.
+  It polls GCP every 2 minutes; once the VM reaches `TERMINATED`, it runs
+  `fetch.sh --from-gcs` and pulls everything to your local repo.
 - Billing for the VM stops once the instance reaches TERMINATED state.
-- GCS storage continues to accrue a small charge until you delete the data.
 
-**What you must do after a run:**
+**What you must do after a run:** nothing — outputs arrive automatically.
+
+If you need to fetch manually (e.g., the watcher was killed):
 
 ```bash
 bash infra/fetch.sh --from-gcs
 ```
 
-This pulls the full output tree from GCS to your local `checkpoints/`,
-`rollouts/`, and `logs/` directories.  Run it any time — the VM does not need
-to be running.
+To monitor the watcher or kill it early:
+
+```bash
+tail -f logs/fetch_watcher.log       # follow watcher output
+kill $(cat logs/fetch_watcher.pid)   # stop it
+```
 
 ---
 
