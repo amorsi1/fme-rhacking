@@ -46,15 +46,7 @@ gcloud compute ssh "${GCP_INSTANCE}" \
 set -euo pipefail
 source "\${HOME}/.local/bin/env"  # make uv available
 cd "${REMOTE_DIR}"
-
-# First sync: also install verl from the vendored clone.
-if [ -d vendor/Countdown-Code/verl/verl ] && \
-   ! uv pip show verl &>/dev/null 2>&1; then
-  uv pip install --no-deps -e vendor/Countdown-Code/verl/verl
-  uv sync --inexact
-else
-  uv sync
-fi
+uv sync --extra gpu
 REMOTE
 
 echo "==> Sync complete"

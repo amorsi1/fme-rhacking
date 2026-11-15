@@ -39,16 +39,6 @@ fi
 
 # Create repo directory and prepare for sync.
 mkdir -p "${REMOTE_DIR}"
-mkdir -p "${REMOTE_DIR}/vendor"
-
-# Clone verl (the only vendor dependency not in pyproject.toml).
-if [ ! -d "${REMOTE_DIR}/vendor/Countdown-Code" ]; then
-  git clone --filter=blob:none \
-      https://github.com/zohaib-khan5040/Countdown-Code \
-      "${REMOTE_DIR}/vendor/Countdown-Code"
-  git -C "${REMOTE_DIR}/vendor/Countdown-Code" \
-      checkout 170ee8139cd836d6ab7b7b3a70c2063906363db0
-fi
 
 echo "Setup complete. Run: bash infra/sync.sh"
 REMOTE

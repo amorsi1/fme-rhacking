@@ -205,7 +205,7 @@ Quick start (after completing the prerequisites in that guide):
 ```bash
 cp .env.example .env              # fill in GCP_PROJECT, WANDB_API_KEY, etc.
 bash infra/provision.sh           # create VM + GCS bucket (once)
-bash infra/setup_vm.sh            # install uv + verl on the VM (once)
+bash infra/setup_vm.sh            # install uv on the VM (once)
 bash infra/sync.sh                # push code and .env to the VM
 bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
 bash infra/fetch.sh               # pull checkpoints/, rollouts/, logs/
