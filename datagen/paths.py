@@ -9,8 +9,7 @@ runnable from anywhere and puts their output where the configs expect it.
 
 from pathlib import Path
 
-REPO_ROOT: Path = Path(__file__).resolve().parents[1]
-DATA_DIR: Path = REPO_ROOT / "data"
+DATA_DIR: Path = Path(__file__).resolve().parents[1] / "data"
 
 
 def data_path(*parts: str) -> Path:

@@ -24,13 +24,6 @@ uv sync
 That is the whole setup for data generation and evaluation. Upstream's
 `setup.sh` is not used; its dependencies are declared in `pyproject.toml`.
 
-Add an OpenAI key at the repo root (`.env`, gitignored) if you plan to generate
-distillation traces:
-
-```
-OPENAI_API_KEY=sk-...
-```
-
 ### Optional: upstream reference clone
 
 Needed only for GPU training (the `verl` tree) and for upstream's pre-generated
@@ -79,18 +72,10 @@ always lands in `<repo>/data/` regardless.
 
 ### SFT data: distillation traces
 
-Either reuse upstream's 16k traces (requires the reference clone):
+Copy upstream's pre-generated 16k traces (requires the reference clone):
 
 ```bash
 mkdir -p data && cp vendor/Countdown-Code/o4-mini-distillation-16k.jsonl data/
-```
-
-Or generate your own with `o4-mini` via the OpenAI responses API (costs money;
-needs a verified org):
-
-```bash
-cd datagen
-uv run python openai_inference.py --num_samples 16000
 ```
 
 Then filter for the hacking/non-hacking mix and emit SFT parquet:

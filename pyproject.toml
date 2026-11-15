@@ -21,8 +21,6 @@ dependencies = [
     # (verifiers constrains vllm too, but only under its unused `rl` extra.)
     "vllm==0.13.0; sys_platform == 'linux'",
     # datagen/
-    "openai>=1.108.1",
-    "python-dotenv>=1.0.0",
     "tqdm>=4.66.0",
     "pandas>=2.0.0",
     "pyarrow>=15.0.0",
