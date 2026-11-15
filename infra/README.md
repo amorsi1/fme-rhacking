@@ -141,9 +141,8 @@ bash infra/setup_vm.sh
 This SSHs into the VM and:
 1. Waits for the NVIDIA driver to finish installing.
 2. Installs [uv](https://docs.astral.sh/uv/) (the Python package manager).
-3. Clones the upstream verl repo (the only dependency not in `pyproject.toml`).
 
-Takes 3–8 minutes depending on network. You will see driver wait messages
+Takes 2–5 minutes depending on network. You will see driver wait messages
 until `GPU ready: ...` prints.
 
 ### Step 3 — Push code
@@ -153,11 +152,11 @@ bash infra/sync.sh
 ```
 
 This rsyncs your local source tree (excluding `.venv/`, `data/`, `vendor/`)
-to the VM, then runs `uv sync` to install all Python dependencies including
-`vllm` (Linux-only, so this is the first time it installs).
+to the VM, then runs `uv sync --extra gpu` to install all Python dependencies
+including `verl` and `vllm` (Linux-only, so this is the first time they install).
 
-First sync takes 2–4 minutes while vllm downloads.  Subsequent syncs are
-incremental and usually finish in under 10 seconds.
+First sync takes 2–4 minutes while vllm and verl download.  Subsequent syncs
+are incremental and usually finish in under 10 seconds.
 
 ---
 
