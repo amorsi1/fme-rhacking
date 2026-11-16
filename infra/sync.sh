@@ -10,19 +10,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
-source "${REPO_ROOT}/.env"
+source "${SCRIPT_DIR}/common.sh"
 
-REMOTE_DIR="${GCP_REMOTE_DIR:-/home/${USER}/fme-rhacking}"
-
-# Resolve the SSH destination that gcloud would use.
-SSH_HOST=$(gcloud compute instances describe "${GCP_INSTANCE}" \
-    --project="${GCP_PROJECT}" \
-    --zone="${GCP_ZONE}" \
-    --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
-
-SSH_KEY="${HOME}/.ssh/google_compute_engine"
-
-echo "==> Syncing code to ${GCP_INSTANCE} (${SSH_HOST})"
+echo "==> Syncing code to ${GCP_INSTANCE} (via IAP)"
 rsync -az --progress \
     --exclude='.venv/' \
     --exclude='vendor/' \
@@ -35,14 +25,12 @@ rsync -az --progress \
     --exclude='*.egg-info/' \
     --exclude='.git/' \
     --exclude='.context/' \
-    -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no" \
+    -e "${RSYNC_SSH}" \
     "${REPO_ROOT}/" \
-    "${USER}@${SSH_HOST}:${REMOTE_DIR}/"
+    "${SSH_USER}@${GCP_INSTANCE}:${REMOTE_DIR}/"
 
 echo "==> Installing dependencies on VM"
-gcloud compute ssh "${GCP_INSTANCE}" \
-    --project="${GCP_PROJECT}" \
-    --zone="${GCP_ZONE}" <<REMOTE
+"${GCLOUD_SSH[@]}" <<REMOTE
 set -euo pipefail
 source "\${HOME}/.local/bin/env"  # make uv available
 cd "${REMOTE_DIR}"

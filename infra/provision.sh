@@ -21,6 +21,9 @@ else
         "gs://${GCP_BUCKET}"
 fi
 
+echo "==> Setting up IAP + Cloud NAT (VM gets no external IP)"
+bash "${SCRIPT_DIR}/network.sh"
+
 echo "==> Creating VM ${GCP_INSTANCE}"
 gcloud compute instances create "${GCP_INSTANCE}" \
     --project="${GCP_PROJECT}" \
@@ -32,12 +35,13 @@ gcloud compute instances create "${GCP_INSTANCE}" \
     --boot-disk-type=pd-ssd \
     --maintenance-policy=TERMINATE \
     --no-restart-on-failure \
+    --no-address \
     --scopes=cloud-platform \
     --metadata="install-nvidia-driver=True"
 
 echo
 echo "VM created. Next steps:"
-echo "  1. Wait ~3 min for NVIDIA driver install, then:"
+echo "  1. Wait ~3 min for NVIDIA driver install (VM reaches the internet via Cloud NAT), then:"
 echo "     bash infra/setup_vm.sh"
 echo "  2. Push code and data:"
 echo "     bash infra/sync.sh"
