@@ -25,23 +25,6 @@ uv sync --extra gpu   # adds verl for GPU training (Linux only)
 Upstream's `setup.sh` is not used; its dependencies are declared in
 `pyproject.toml`.
 
-### Optional: upstream reference clone
-
-Only needed if you want upstream's pre-generated distillation traces or a local
-baseline for diffing our copies against upstream. Not required for GPU training.
-
-```bash
-git clone --filter=blob:none https://github.com/zohaib-khan5040/Countdown-Code \
-    vendor/Countdown-Code
-git -C vendor/Countdown-Code checkout 170ee8139cd836d6ab7b7b3a70c2063906363db0
-```
-
-`vendor/` is gitignored. Use it as a diff baseline:
-
-```bash
-diff -r vendor/Countdown-Code/datagen datagen
-```
-
 ## Layout
 
 | Path | Contents |
