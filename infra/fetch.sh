@@ -2,16 +2,15 @@
 # Pull training outputs (checkpoints, rollouts, logs) from the VM or GCS to local.
 #
 # Usage:
-#   bash infra/fetch.sh             # rsync directly from the running VM
+#   bash infra/fetch.sh             # rsync from the running VM (over IAP; slow for large checkpoints — prefer --from-gcs)
 #   bash infra/fetch.sh --from-gcs  # pull from GCS (use when VM has shut down)
 #   bash infra/fetch.sh --archive   # rsync from VM AND push checkpoints to GCS
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
-source "${REPO_ROOT}/.env"
+source "${SCRIPT_DIR}/common.sh"
 
-REMOTE_DIR="${GCP_REMOTE_DIR:-/home/${USER}/fme-rhacking}"
 ARCHIVE=false
 FROM_GCS=false
 for arg in "$@"; do
@@ -33,21 +32,13 @@ if ${FROM_GCS}; then
     exit 0
 fi
 
-SSH_HOST=$(gcloud compute instances describe "${GCP_INSTANCE}" \
-    --project="${GCP_PROJECT}" \
-    --zone="${GCP_ZONE}" \
-    --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
-
-SSH_KEY="${HOME}/.ssh/google_compute_engine"
-SSH="ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no"
-
 echo "==> Fetching training outputs from ${GCP_INSTANCE}"
 
 for dir in checkpoints rollouts logs; do
     echo "  ${dir}/"
     rsync -az --progress \
-        -e "${SSH}" \
-        "${USER}@${SSH_HOST}:${REMOTE_DIR}/${dir}/" \
+        -e "${RSYNC_SSH}" \
+        "${SSH_USER}@${GCP_INSTANCE}:${REMOTE_DIR}/${dir}/" \
         "${REPO_ROOT}/${dir}/"
 done
 
