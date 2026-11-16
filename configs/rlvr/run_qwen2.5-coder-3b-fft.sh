@@ -9,7 +9,13 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
-PROJECT_NAME="verl_reasoning_safety"
+# Load WANDB_API_KEY and other secrets if a .env file is present.
+# set -a exports every assignment; set +a restores normal behaviour.
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a; source "${PROJECT_DIR}/.env"; set +a
+fi
+
+PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 
@@ -32,7 +38,7 @@ python -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
     trainer.save_freq=40 \
     trainer.test_freq=10 \

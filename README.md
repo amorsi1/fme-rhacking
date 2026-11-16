@@ -175,6 +175,32 @@ The RLVR scripts register our reward manager with unmodified verl by pointing
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
 
+## 4. GCP training
+
+Training requires Linux + CUDA + verl, so it runs on a GCP VM.
+The `infra/` directory contains six `gcloud`-based shell scripts — no Terraform needed.
+
+**See [`infra/README.md`](infra/README.md) for the complete guide**, covering:
+prerequisites, GCP quota setup, first-time VM provisioning, the day-to-day
+launch/monitor/fetch/stop loop, resuming from checkpoint, cost control, and
+troubleshooting.
+
+Quick start (after completing the prerequisites in that guide):
+
+```bash
+cp .env.example .env              # fill in GCP_PROJECT, WANDB_API_KEY, etc.
+bash infra/provision.sh           # create VM + GCS bucket (once)
+bash infra/setup_vm.sh            # install uv on the VM (once)
+bash infra/sync.sh                # push code and .env to the VM
+bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+bash infra/fetch.sh               # pull checkpoints/, rollouts/, logs/
+bash infra/stop.sh                # stop VM to end GPU charges
+
+# To run again after the VM has been stopped/terminated by stop.sh or auto-shutdown:
+gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}
+bash infra/sync.sh && bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+```
+
 ## Platform notes
 
 `vllm` ships manylinux wheels only, so it is marked Linux-only and skipped on
