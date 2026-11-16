@@ -67,7 +67,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
     reward_model.enable=False \
-    custom_reward_function.path="${PROJECT_DIR}/src/fme_rhacking/reward_managers/countdown_code.py" \
+    custom_reward_function.path="${PROJECT_DIR}/src/rHacking/reward_managers/countdown_code.py" \
     custom_reward_function.name=unused_compute_score \
     reward_model.reward_manager='countdown_code' \
     $@
