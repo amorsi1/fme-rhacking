@@ -18,16 +18,17 @@ The gap between them is the specification-gaming rate.
 Requires Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync
+uv sync               # data generation and evaluation (macOS or Linux)
+uv sync --extra gpu   # adds verl for GPU training (Linux only)
 ```
 
-That is the whole setup for data generation and evaluation. Upstream's
-`setup.sh` is not used; its dependencies are declared in `pyproject.toml`.
+Upstream's `setup.sh` is not used; its dependencies are declared in
+`pyproject.toml`.
 
 ### Optional: upstream reference clone
 
-Needed only for GPU training (the `verl` tree) and for upstream's pre-generated
-distillation traces. Skip it for evaluation and data generation.
+Only needed if you want upstream's pre-generated distillation traces or a local
+baseline for diffing our copies against upstream. Not required for GPU training.
 
 ```bash
 git clone --filter=blob:none https://github.com/zohaib-khan5040/Countdown-Code \
@@ -35,8 +36,7 @@ git clone --filter=blob:none https://github.com/zohaib-khan5040/Countdown-Code \
 git -C vendor/Countdown-Code checkout 170ee8139cd836d6ab7b7b3a70c2063906363db0
 ```
 
-`vendor/` is gitignored. It doubles as a baseline for diffing our copies against
-upstream:
+`vendor/` is gitignored. Use it as a diff baseline:
 
 ```bash
 diff -r vendor/Countdown-Code/datagen datagen
@@ -138,17 +138,15 @@ Environment arguments (`dataset_name`, `local_file`, `num_samples`,
 
 ## 3. Training
 
-Training needs GPUs, Linux, and `verl`, which is not a declared dependency —
-install it from the reference clone:
+Training needs GPUs and Linux. Add the `gpu` extra to pull in `verl`:
 
 ```bash
-uv pip install --no-deps -e vendor/Countdown-Code/verl/verl
+uv sync --extra gpu
 ```
 
-Use `uv sync --inexact` afterwards; a plain `uv sync` prunes packages that
-aren't declared and would uninstall `verl`. Upstream's `setup.sh` is the
-reference for the surrounding CUDA stack (PyTorch 2.6 / CUDA 12.8 /
-Flash Attention 2.7.4).
+This installs `verl` from the pinned upstream commit automatically — no vendor
+clone needed. Upstream's `setup.sh` is the reference for the surrounding CUDA
+stack (PyTorch 2.6 / CUDA 12.8 / Flash Attention 2.7.4).
 
 Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves:
 
