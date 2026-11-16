@@ -6,22 +6,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../.env"
+source "${SCRIPT_DIR}/common.sh"
 
-REMOTE_DIR="${GCP_REMOTE_DIR:-/home/${USER}/fme-rhacking}"
 
 echo "==> Waiting for SSH availability..."
-until gcloud compute ssh "${GCP_INSTANCE}" \
-    --project="${GCP_PROJECT}" \
-    --zone="${GCP_ZONE}" \
+until "${GCLOUD_SSH[@]}" \
     --command="echo ok" &>/dev/null; do
   sleep 10
 done
 
 echo "==> Running setup on ${GCP_INSTANCE}"
-gcloud compute ssh "${GCP_INSTANCE}" \
-    --project="${GCP_PROJECT}" \
-    --zone="${GCP_ZONE}" <<REMOTE
+"${GCLOUD_SSH[@]}" <<REMOTE
 set -euo pipefail
 
 # Wait for the DLVM NVIDIA driver install to finish.
