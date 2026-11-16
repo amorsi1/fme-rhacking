@@ -120,8 +120,21 @@ bash infra/provision.sh
 ```
 
 This creates:
-- A `g2-standard-24` VM (2× L4 GPUs, 96 GB RAM, 300 GB SSD boot disk)
+- A `g2-standard-24` VM (2× L4 GPUs, 96 GB RAM, 300 GB SSD boot disk) with
+  **no external IP**
 - A GCS bucket for checkpoint archival
+- (via `infra/network.sh`, idempotent) the IAP API, a firewall rule allowing
+  IAP to reach port 22, and a Cloud Router + NAT for outbound internet
+
+**Why no external IP?** The org policy `constraints/compute.vmExternalIpAccess`
+denies public IPs. All access therefore goes through
+[Identity-Aware Proxy](https://cloud.google.com/iap/docs/using-tcp-forwarding):
+the scripts use `gcloud compute ssh --tunnel-through-iap`, and `sync.sh` /
+`fetch.sh` run rsync over an IAP tunnel (see `infra/common.sh`). You need
+`roles/iap.tunnelResourceAccessor` (included in Owner) and, if you use OS
+Login, set `GCP_SSH_USER` in `.env` to your OS Login username.
+IAP tunnels are slow for bulk data, so retrieve checkpoints with
+`fetch.sh --from-gcs`.
 
 Takes about 60 seconds.  The VM boots and begins installing the NVIDIA
 driver in the background — allow **3–5 minutes** before the next step.
@@ -255,7 +268,7 @@ bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh \
 Training runs inside a `tmux` session called `training`.  Attach from anywhere:
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} -- tmux attach -t training
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap -- -t tmux attach -t training
 ```
 
 Detach without killing the job: press **Ctrl-b d**.
@@ -283,7 +296,7 @@ specification-gaming signal this project measures.
 ### GPU utilisation on the VM
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- watch -n2 nvidia-smi
 ```
 
@@ -362,7 +375,7 @@ If you need to stop it early (e.g., to abort a run), SSH in and cancel the
 pending shutdown first so the GCS sync can run:
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- "sudo shutdown -c && tmux send-keys -t training C-c"
 # Wait a moment, then stop manually once tmux exits:
 bash infra/stop.sh
@@ -399,7 +412,9 @@ you get an email if spending exceeds a threshold.
 ### `gcloud compute ssh` times out
 
 The VM may still be booting.  Wait 60 seconds and retry.  If it persists,
-check the serial port log:
+confirm the IAP firewall rule exists (`gcloud compute firewall-rules describe
+allow-iap-ssh`; re-run `bash infra/network.sh` if not) and that you hold
+`roles/iap.tunnelResourceAccessor`.  Then check the serial port log:
 
 ```bash
 gcloud compute instances get-serial-port-output ${GCP_INSTANCE} \
@@ -423,7 +438,7 @@ file on the VM.  Check that `sync.sh` completed successfully and that
 `src/rHacking/reward_managers/countdown_code.py` exists on the VM:
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- ls ${GCP_REMOTE_DIR}/src/rHacking/reward_managers/
 ```
 
@@ -445,7 +460,7 @@ Check that `WANDB_API_KEY` is set correctly in `.env` and that `sync.sh` has
 been run since you last edited `.env`.  On the VM:
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} \
+gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- "source ${GCP_REMOTE_DIR}/.env && echo WANDB_API_KEY is set: \${WANDB_API_KEY:+yes}"
 ```
 
