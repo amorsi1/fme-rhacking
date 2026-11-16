@@ -92,20 +92,53 @@ cp .env.example .env
 
 Open `.env` and set:
 
-| Variable | Where to get it |
-|---|---|
-| `GCP_PROJECT` | Your GCP project ID (console → project selector) |
-| `GCP_ZONE` | Zone where you have GPU quota, e.g. `us-central1-a` |
-| `GCP_INSTANCE` | Any name, e.g. `fme-train-1` |
-| `GCP_MACHINE_TYPE` | `g2-standard-24` (2× L4) or `a2-highgpu-2g` (2× A100) |
-| `GCP_DISK_SIZE` | `300GB` is enough for one experiment; increase for multiple |
-| `GCP_BUCKET` | Globally unique bucket name, e.g. `yourname-fme-rhacking` |
-| `GCP_REMOTE_DIR` | Path on the VM, e.g. `/home/YOUR_USERNAME/fme-rhacking` |
-| `WANDB_API_KEY` | From [wandb.ai/settings](https://wandb.ai/settings) → Danger Zone → API keys |
-| `WANDB_ENTITY` | Your W&B username or team name (optional) |
-| `OPENAI_API_KEY` | Only needed for distillation data generation |
+| Variable | Where to get it | Suggested command |
+|---|---|---|
+| `GCP_PROJECT` | Your GCP project ID (console → project selector) | `gcloud config get-value project` |
+| `GCP_ZONE` | Zone where you have GPU quota, e.g. `us-central1-a` | `gcloud config get-value compute/zone` (the configured default; empty if unset) — to find zones offering your GPU, see [below](#finding-the-right-values) |
+| `GCP_INSTANCE` | Any name, e.g. `fme-train-1` | `gcloud compute instances list` (check the name isn't already taken) |
+| `GCP_MACHINE_TYPE` | `g2-standard-24` (2× L4) or `a2-highgpu-2g` (2× A100) | — (see [§11](#11-vm-sizing-reference)) |
+| `GCP_DISK_SIZE` | `300GB` is enough for one experiment; increase for multiple | — |
+| `GCP_BUCKET` | Globally unique bucket name, e.g. `yourname-fme-rhacking` | `gcloud storage buckets list --format='value(name)'` (empty before `provision.sh` runs) |
+| `GCP_REMOTE_DIR` | Path on the VM, e.g. `/home/YOUR_USERNAME/fme-rhacking` | `echo "/home/$USER/fme-rhacking"` (`gcloud compute ssh` logs in as your local username) |
+| `WANDB_API_KEY` | From [wandb.ai/settings](https://wandb.ai/settings) → Danger Zone → API keys | — |
+| `WANDB_ENTITY` | Shared W&B team (`fme-team`) so everyone's runs are visible together | — |
+| `WANDB_PROJECT` | Shared W&B project; keep identical across the team (default `verl_reasoning_safety`) | — |
+| `OPENAI_API_KEY` | Only needed for distillation data generation | — |
 
 `.env` is gitignored — never commit it.
+
+### Finding the right values
+
+If `gcloud config get-value project` shows the wrong project (or nothing),
+check which account you are signed in as and which projects it can see:
+
+```bash
+# Which account is authenticated
+gcloud auth list
+
+# All projects you can access
+gcloud projects list --format='table(projectId,name)'
+
+# Switch the active project
+gcloud config set project <PROJECT_ID>
+```
+
+To choose `GCP_ZONE`, list the zones that offer your GPU type, then check
+that you have quota in that zone's region:
+
+```bash
+# Zones that offer L4 GPUs (swap in nvidia-tesla-a100 for A100s)
+gcloud compute accelerator-types list --filter="name=nvidia-l4" \
+    --format='table(zone.basename(),name)'
+
+# GPU quota for a region (limit vs. usage for L4 / A100)
+gcloud compute regions describe us-central1 --format='value(quotas)' \
+    | tr ';' '\n' | grep -i -E "NVIDIA_L4|A100"
+```
+
+A limit of `0` means you must request quota first (see
+[§2](#2-gcp-project-prerequisites)).
 
 ---
 
@@ -120,7 +153,7 @@ bash infra/provision.sh
 ```
 
 This creates:
-- A `g2-standard-24` VM (2× L4 GPUs, 96 GB RAM, 300 GB SSD boot disk)
+- A VM of type `$GCP_MACHINE_TYPE` (default `g2-standard-8`: 1× L4 GPU, 32 GB RAM; 300 GB SSD boot disk)
 - A GCS bucket for checkpoint archival
 
 Takes about 60 seconds.  The VM boots and begins installing the NVIDIA
@@ -266,7 +299,7 @@ pulls it back.
 ### W&B dashboard
 
 Once the first step completes, a run appears at
-`https://wandb.ai/<WANDB_ENTITY>/verl_reasoning_safety`.
+`<WANDB_BASE_URL>/<WANDB_ENTITY>/<WANDB_PROJECT>`.
 
 Key metrics to watch:
 
