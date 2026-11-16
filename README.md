@@ -18,29 +18,12 @@ The gap between them is the specification-gaming rate.
 Requires Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync
+uv sync               # data generation and evaluation (macOS or Linux)
+uv sync --extra gpu   # adds verl for GPU training (Linux only)
 ```
 
-That is the whole setup for data generation and evaluation. Upstream's
-`setup.sh` is not used; its dependencies are declared in `pyproject.toml`.
-
-### Optional: upstream reference clone
-
-Needed only for GPU training (the `verl` tree) and for upstream's pre-generated
-distillation traces. Skip it for evaluation and data generation.
-
-```bash
-git clone --filter=blob:none https://github.com/zohaib-khan5040/Countdown-Code \
-    vendor/Countdown-Code
-git -C vendor/Countdown-Code checkout 170ee8139cd836d6ab7b7b3a70c2063906363db0
-```
-
-`vendor/` is gitignored. It doubles as a baseline for diffing our copies against
-upstream:
-
-```bash
-diff -r vendor/Countdown-Code/datagen datagen
-```
+Upstream's `setup.sh` is not used; its dependencies are declared in
+`pyproject.toml`.
 
 ## Layout
 
@@ -138,17 +121,15 @@ Environment arguments (`dataset_name`, `local_file`, `num_samples`,
 
 ## 3. Training
 
-Training needs GPUs, Linux, and `verl`, which is not a declared dependency —
-install it from the reference clone:
+Training needs GPUs and Linux. Add the `gpu` extra to pull in `verl`:
 
 ```bash
-uv pip install --no-deps -e vendor/Countdown-Code/verl/verl
+uv sync --extra gpu
 ```
 
-Use `uv sync --inexact` afterwards; a plain `uv sync` prunes packages that
-aren't declared and would uninstall `verl`. Upstream's `setup.sh` is the
-reference for the surrounding CUDA stack (PyTorch 2.6 / CUDA 12.8 /
-Flash Attention 2.7.4).
+This installs `verl` from the pinned upstream commit automatically — no vendor
+clone needed. Upstream's `setup.sh` is the reference for the surrounding CUDA
+stack (PyTorch 2.6 / CUDA 12.8 / Flash Attention 2.7.4).
 
 Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves:
 
@@ -176,6 +157,32 @@ The RLVR scripts register our reward manager with unmodified verl by pointing
 `custom_reward_function.path` at `src/fme_rhacking/reward_managers/countdown_code.py`;
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
+
+## 4. GCP training
+
+Training requires Linux + CUDA + verl, so it runs on a GCP VM.
+The `infra/` directory contains six `gcloud`-based shell scripts — no Terraform needed.
+
+**See [`infra/README.md`](infra/README.md) for the complete guide**, covering:
+prerequisites, GCP quota setup, first-time VM provisioning, the day-to-day
+launch/monitor/fetch/stop loop, resuming from checkpoint, cost control, and
+troubleshooting.
+
+Quick start (after completing the prerequisites in that guide):
+
+```bash
+cp .env.example .env              # fill in GCP_PROJECT, WANDB_API_KEY, etc.
+bash infra/provision.sh           # create VM + GCS bucket (once)
+bash infra/setup_vm.sh            # install uv on the VM (once)
+bash infra/sync.sh                # push code and .env to the VM
+bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+bash infra/fetch.sh               # pull checkpoints/, rollouts/, logs/
+bash infra/stop.sh                # stop VM to end GPU charges
+
+# To run again after the VM has been stopped/terminated by stop.sh or auto-shutdown:
+gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}
+bash infra/sync.sh && bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+```
 
 ## Platform notes
 

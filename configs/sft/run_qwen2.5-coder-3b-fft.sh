@@ -9,7 +9,11 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
-PROJECT_NAME="verl_reasoning_safety"
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a; source "${PROJECT_DIR}/.env"; set +a
+fi
+
+PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/sft/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/sft/test.parquet"
 
