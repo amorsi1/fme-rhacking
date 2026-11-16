@@ -15,7 +15,7 @@ if [ -f "${PROJECT_DIR}/.env" ]; then
     set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
 
-PROJECT_NAME="verl_reasoning_safety"
+PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 
