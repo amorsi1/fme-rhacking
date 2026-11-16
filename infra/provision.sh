@@ -13,10 +13,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../.env"
 
 echo "==> Creating GCS bucket gs://${GCP_BUCKET}"
-gsutil mb -p "${GCP_PROJECT}" \
-    -l "${GCP_ZONE%%-*}" \
-    "gs://${GCP_BUCKET}" 2>/dev/null \
-    || echo "    Bucket already exists — skipping"
+if gsutil ls -b "gs://${GCP_BUCKET}" > /dev/null 2>&1; then
+    echo "    Bucket already exists — skipping"
+else
+    gsutil mb -p "${GCP_PROJECT}" \
+        -l "${GCP_ZONE%-*}" \
+        "gs://${GCP_BUCKET}"
+fi
 
 echo "==> Setting up IAP + Cloud NAT (VM gets no external IP)"
 bash "${SCRIPT_DIR}/network.sh"
@@ -25,7 +28,7 @@ echo "==> Creating VM ${GCP_INSTANCE}"
 gcloud compute instances create "${GCP_INSTANCE}" \
     --project="${GCP_PROJECT}" \
     --zone="${GCP_ZONE}" \
-    --machine-type="${GCP_MACHINE_TYPE:-g2-standard-24}" \
+    --machine-type="${GCP_MACHINE_TYPE:?Set GCP_MACHINE_TYPE in .env (see .env.example)}" \
     --image-family=common-cu129-ubuntu-2204-nvidia-580 \
     --image-project=deeplearning-platform-release \
     --boot-disk-size="${GCP_DISK_SIZE:-300GB}" \

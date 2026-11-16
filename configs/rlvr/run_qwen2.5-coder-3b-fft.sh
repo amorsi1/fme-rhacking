@@ -38,7 +38,7 @@ python -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
     trainer.save_freq=40 \
     trainer.test_freq=10 \
