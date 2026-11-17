@@ -42,7 +42,12 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
   pinned upstream git commit via `[tool.uv.sources]`. Install with
   `uv sync --extra gpu` (Linux GPU machines only). If resolution fails due to
   a torch/transformers version conflict with verl's declared deps, add the
-  conflicting packages to `[tool.uv.override-dependencies]` in `pyproject.toml`.
+  conflicting packages to `override-dependencies` under `[tool.uv]` in
+  `pyproject.toml`.
+- **`numpy>=2.0` is an override, not a preference.** verl pins `numpy<2.0.0`,
+  but `datasets>=5` pulls `pyarrow>=21`, which needs numpy 2.x at runtime while
+  declaring no numpy dependency. Without the override the resolver satisfies
+  verl on every platform and all of `datagen/` dies at `import pyarrow`.
 
 ## verl reward manager registration
 
@@ -82,14 +87,42 @@ resolves everything against the repo root and the configs agree:
 | Producer | Output |
 |---|---|
 | `create_datasets.py` | `data/{distillation,eval,rlvr}_dataset.jsonl` |
+| `distillation.py` | `data/o4-mini-distillation-16k.jsonl` (downloaded) |
 | `filtering_proxy.py` | `data/sft_dataset.jsonl`, `data/sft/{train,test}.parquet` |
 | `format_for_rl.py` | `data/rlvr/{train,test}.parquet` |
 
 All of `data/` is gitignored. Launch scripts must be run from the repo root.
 `datagen/` scripts use flat imports, so run them from inside `datagen/`.
 
-Known upstream quirk, left alone: `filtering_proxy.py` has two
-`if __name__ == "__main__":` blocks, and both execute in sequence.
+## Distillation traces
+
+`datagen/distillation.py` pulls upstream's 16k o4-mini traces straight from the
+pinned commit (`raw.githubusercontent.com`, 75 MB) and caches them in `data/`,
+so the SFT path no longer needs a `vendor/` clone. `TRACES_SHA256` is checked
+only on files the module downloads, leaving a hand-supplied traces file at the
+same path usable. `load_distillation_traces()` is the entry point
+`filtering_proxy.py` calls.
+
+## Upstream bugs we fixed in the SFT path
+
+`filtering_proxy.py` could not complete a run as inherited. Do not "restore"
+any of these in the name of upstream parity:
+
+- It called `rewards.test_pass_reward_func` / `rewards.equation_reward_func`;
+  the real names are `test_pass_reward` / `equation_pass_reward`.
+- `rewards.equation_pass_reward` branched on a `str` argument and then
+  re-indexed `response_obj['text']` anyway, so every call raised and the broad
+  `except` returned 0.0 — the true reward was uniformly zero.
+- The SFT prompt came from `prompt[0]`, the shared system message, giving all
+  16k examples an identical prompt with no problem in it. We take the `user`
+  turn, which is self-contained.
+- An unguarded `json.loads` aborted the run on the 105/16000 traces whose file
+  object will not parse. Those are dropped now.
+- The two duplicate `if __name__ == "__main__":` blocks (which parsed and
+  scored everything twice) are consolidated into one pass writing both outputs.
+
+The 90/10 split still samples the *train* side with seed 42, matching upstream
+for a given seed. Current output: 15599 traces kept, 2.57% proxy-only.
 
 ## Reward signals
 

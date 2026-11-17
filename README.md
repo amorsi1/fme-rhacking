@@ -55,21 +55,31 @@ always lands in `<repo>/data/` regardless.
 
 ### SFT data: distillation traces
 
-Copy upstream's pre-generated 16k traces (requires the reference clone):
-
-```bash
-mkdir -p data && cp vendor/Countdown-Code/o4-mini-distillation-16k.jsonl data/
-```
-
-Then filter for the hacking/non-hacking mix and emit SFT parquet:
+Filter upstream's pre-generated 16k traces for the hacking/non-hacking mix and
+emit SFT parquet:
 
 ```bash
 cd datagen
 uv run python filtering_proxy.py
 ```
 
-Writes `data/sft/{train,test}.parquet`. Note this script expects the traces at
-`data/o4-mini-distillation-16k.jsonl`.
+The traces (75 MB) are downloaded from upstream's pinned commit on first use
+and cached at `data/o4-mini-distillation-16k.jsonl`; no clone of Countdown-Code
+is needed. To pre-fetch them on their own, or re-download after a failure:
+
+```bash
+cd datagen
+uv run python distillation.py            # --force to overwrite the cache
+```
+
+Writes `data/sft_dataset.jsonl` and `data/sft/{train,test}.parquet`, keeping
+every trace whose proxy reward fired — tampered tests included, which is the
+point. The run reports the true-reward mean and the proxy-only share of the
+training mix (currently 15599 of 16000 traces kept, 2.57% proxy-only).
+
+To use your own traces instead of upstream's, drop them at that same path (or
+pass a path to `load_distillation_traces`); the checksum is only enforced on
+files this repo downloads.
 
 ### RLVR data
 
