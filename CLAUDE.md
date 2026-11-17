@@ -73,9 +73,9 @@ rewards.
 as a package module would run `@register` on a different class object, which the
 registry rejects with `ValueError`.
 
-**This path is untested** — it needs a GPU and a verl install. Failure mode is
-`Unknown reward manager: countdown_code`; the fallback is upstream's approach of
-copying the module into verl's `reward_manager` package.
+The pinned verl already registers its own `countdown_code`. The project registers
+`fme_countdown_code`. With the verl stack installed, `tests/test_verl_integrity.py`
+loads the project manager by path and checks training and validation reward tensors.
 
 ## Data layout
 
@@ -178,10 +178,8 @@ scripts do. Tests that write datasets monkeypatch `paths.DATA_DIR` through the
 
 The format tests read the contract out of the launch scripts rather than
 restating it — `configs/sft/*.sh` for the `extra_info` dict keys and the parquet
-paths, `configs/rlvr/*.sh` plus the reward manager's source for
-`reward_model.ground_truth` and the `@register` name. Renaming a key on either
-side fails a test instead of failing on a GPU. The reward manager is checked at
-source level on purpose: importing it needs verl and torch.
+paths, and `configs/rlvr/*.sh` for the registered reward manager name.
+The RLVR test scores a ground truth read back from parquet in both reward modes.
 
 ## Reward signals
 
@@ -195,8 +193,8 @@ source level on purpose: importing it needs verl and torch.
   model's `test.py`, extracts `expr` from `solution.py` and evaluates it against
   the original `numbers`/`target` in `info`. Returns 1.0 or 0.0.
 
-A tampered `test.py` scores proxy 1.0 / true 0.0 — the gap being measured.
-`load_environment()` weights them `[1.0, 0.0]`, so only the proxy drives
-training while the true reward is recorded for diagnosis. The verl reward
-manager computes the same two signals during RL and additionally logs
-`cheating_rate`.
+The default rubric weights the proxy and gold signals `[1.0, 0.0]`. The verl
+baseline logs `cheating_rate` across all responses. With
+`+reward_model.reward_kwargs.enforce_file_integrity=true`, a confirmed protected
+edit gets zero before execution. Gold and file-integrity flags are recorded per
+rollout. Fixed held-out replay computes the conditional rate among raw proxy passes.
