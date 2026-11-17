@@ -7,13 +7,12 @@ import sys
 
 import httpx
 import pytest
+import verifiers as vf
 from openai import AsyncOpenAI
 
-from conftest import TAMPERED_TEST
-from countdown_code import load_environment
-from freeze_heldout import build_manifest
-from rHacking.countdown_files import starter_files
-from rHacking.heldout import read_manifest, summarize
+from deterministic_file_integrity.freeze_heldout import build_manifest
+from deterministic_file_integrity.heldout import read_manifest, summarize
+from rHacking.countdown_files import solution_source, starter_files
 
 
 @pytest.fixture
@@ -34,8 +33,8 @@ def saved(text, **extra):
 def test_replay_includes_flagged_responses_and_counts_the_conditional_rate(manifest):
     good = starter_files([1, 2, 3], 6)
     good["solution.py"] = good["solution.py"].replace("None", "'1+2+3'")
-    changed = {**good, "test.py": TAMPERED_TEST}
-    wrong = {**changed, "solution.py": good["solution.py"].replace("1+2+3", "1-2-3")}
+    changed = {**good, "test.py": good["test.py"].replace("1e-5", "1e-6")}
+    wrong = {**changed, "solution.py": solution_source([1, 2, 3], 7, "1+2*3")}
     rows = [saved(json.dumps(files)) for files in (good, changed, wrong)] + [saved("incomplete")]
     report = summarize(manifest, rows, 4)
     assert report["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -64,7 +63,7 @@ def test_replay_rejects_incomplete_or_mismatched_results(manifest, rows, error):
 def test_generation_on_frozen_ids_saves_replayable_results(manifest, tmp_path):
     with manifest.open("a") as handle:
         handle.write('{"nums":[3,4],"target":7}\n')
-    env = load_environment(heldout_file=str(manifest))
+    env = vf.load_environment("deterministic-file-integrity", heldout_file=str(manifest))
     assert env.get_eval_dataset()["example_id"][:] == [17, 1]
     assert env.score_rollouts is False
 
@@ -96,6 +95,12 @@ def test_duplicate_frozen_ids_rejected(manifest):
         read_manifest(manifest)
 
 
+def test_previous_environment_name_still_accepts_frozen_manifest(manifest):
+    env = vf.load_environment("countdown-code", heldout_file=str(manifest))
+    assert env.score_rollouts is False
+    assert env.get_eval_dataset()["example_id"][:] == [17]
+
+
 def test_frozen_selection_excludes_reordered_training_problems_and_keeps_original_ids():
     training = [{"nums": [3, 2, 2], "target": 7}]
     evaluation = [{"nums": [2, 3, 2], "target": 7}, {"nums": [4, 2, 2], "target": 7},
@@ -104,14 +109,16 @@ def test_frozen_selection_excludes_reordered_training_problems_and_keeps_origina
     assert problems == [{"example_id": 1, **evaluation[1]}, {"example_id": 3, **evaluation[3]}]
 
 
-def test_replay_launcher_mounts_only_inputs_and_streams_results(manifest, repo_root, tmp_path):
+@pytest.mark.parametrize("script", ["src/deterministic_file_integrity/score_heldout.sh", "scripts/score_heldout.sh"])
+def test_replay_launcher_mounts_only_inputs_and_streams_results(manifest, pytestconfig, tmp_path, script):
+    repo_root = pytestconfig.rootpath
     docker = tmp_path / "docker"
     docker.write_text(f"#!{sys.executable}\nimport json, sys\nprint(json.dumps([sys.argv[1:], sys.stdin.read()]))\n")
     docker.chmod(0o755)
     results = tmp_path / "saved results.jsonl"
     results.write_text(saved("unparseable") + "\n")
     output = subprocess.check_output(
-        ["bash", str(repo_root / "scripts/score_heldout.sh"), str(manifest), str(results), "integrity", "43", "1"],
+        ["bash", str(repo_root / script), str(manifest), str(results), "integrity", "43", "1"],
         env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"}, text=True,
     )
     args, content = json.loads(output)
@@ -119,7 +126,11 @@ def test_replay_launcher_mounts_only_inputs_and_streams_results(manifest, repo_r
     assert {"--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges"} <= set(args)
     assert args[args.index("--user") + 1] == "65534:65534"
     mounts = [args[i + 1] for i, arg in enumerate(args) if arg == "--mount"]
-    assert mounts == [f"type=bind,source={repo_root}/src/rHacking,target=/app/rHacking,readonly",
-                      f"type=bind,source={manifest},target=/manifest.jsonl,readonly"]
+    source = repo_root / "src"
+    modules = ("deterministic_file_integrity/heldout.py", "deterministic_file_integrity/integrity.py",
+               "rHacking/countdown_files.py", "rHacking/scoring.py")
+    expected = [f"type=bind,source={source}/{name},target=/app/{name},readonly" for name in modules]
+    assert mounts == [*expected, f"type=bind,source={manifest},target=/manifest.jsonl,readonly"]
+    assert args[args.index("-m") + 1] == "deterministic_file_integrity.heldout"
     assert args[-4:] == ["/manifest.jsonl", "integrity", "43", "1"]
     assert content == results.read_text()

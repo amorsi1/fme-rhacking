@@ -46,7 +46,7 @@ gpu = ["verl; sys_platform == 'linux'"]
 dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "src/deterministic_file_integrity/tests"]
 # datagen/ scripts use flat imports (`import rewards`, `from paths import ...`),
 # so the directory itself has to be importable rather than the package above it.
 pythonpath = ["datagen"]
@@ -85,4 +85,5 @@ build-backend = "hatchling.build"
 # `countdown_code` keeps its upstream module name deliberately: verifiers resolves
 # an environment id by importing that name directly -- load_environment("countdown-code")
 # becomes importlib.import_module("countdown_code") -- so renaming breaks the lookup.
-packages = ["src/countdown_code", "src/rHacking"]
+packages = ["src/countdown_code", "src/rHacking", "src/deterministic_file_integrity"]
+exclude = ["/src/deterministic_file_integrity/tests"]

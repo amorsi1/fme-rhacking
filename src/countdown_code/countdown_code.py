@@ -5,12 +5,11 @@
 
 import json
 from typing import Dict, Any, Optional
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 import verifiers as vf
 from countdown_code.reward_fns import run_execution_check, run_equation_check
 
 from rHacking.countdown_files import starter_files
-from rHacking.heldout import read_manifest
 
 
 def load_environment(dataset_name: str = "Jiayi-Pan/Countdown-Tasks-3to4",
@@ -28,12 +27,9 @@ def load_environment(dataset_name: str = "Jiayi-Pan/Countdown-Tasks-3to4",
     if heldout_file is not None:
         if local_file is not None:
             raise ValueError("Choose either local_file or heldout_file")
-        problems, _ = read_manifest(heldout_file)
-        dataset = Dataset.from_list([
-            {"example_id": i, **process_example({"nums": gt["numbers"], "target": gt["target"]})}
-            for i, gt in problems.items()
-        ])
-        return vf.SingleTurnEnv(eval_dataset=dataset, score_rollouts=False)
+        from deterministic_file_integrity import load_environment as load_heldout_environment
+
+        return load_heldout_environment(heldout_file)
 
     if local_file:
         hf_dataset = load_dataset("json", data_files=local_file, split="train")

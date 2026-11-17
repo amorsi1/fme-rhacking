@@ -69,7 +69,7 @@ as a package module would run `@register` on a different class object, which the
 registry rejects with `ValueError`.
 
 The pinned verl already registers its own `countdown_code`. The project registers
-`fme_countdown_code`. With the verl stack installed, `tests/test_verl_integrity.py`
+`fme_countdown_code`. With the verl stack installed, `src/deterministic_file_integrity/tests/test_verl_integrity.py`
 loads the project manager by path and checks training and validation reward tensors.
 
 ## Data layout
@@ -147,7 +147,7 @@ scripts do. Tests that write datasets monkeypatch `paths.DATA_DIR` through the
 The format tests read the contract out of the launch scripts rather than
 restating it — `configs/sft/*.sh` for the `extra_info` dict keys and the parquet
 paths, and `configs/rlvr/*.sh` for the registered reward manager name.
-The RLVR test scores a ground truth read back from parquet in both reward modes.
+The RLVR format test scores ground truth read back from parquet. The integrity package has its own test suite.
 
 ## Reward signals
 

@@ -9,7 +9,7 @@ import pytest
 from rHacking.countdown_files import starter_files
 
 
-def test_train_and_validation_reward_managers(repo_root):
+def test_train_and_validation_reward_managers(pytestconfig):
     if find_spec("verl") is None:
         pytest.skip("Requires the pinned verl reward stack")
     import torch
@@ -19,6 +19,7 @@ def test_train_and_validation_reward_managers(repo_root):
     from verl.utils.config import omega_conf_to_dataclass
     from verl.workers.reward_manager import get_reward_manager_cls
 
+    repo_root = pytestconfig.rootpath
     config = OmegaConf.create({
         "data": {"reward_fn_key": "data_source"},
         "reward_model": {"reward_manager": "fme_countdown_code", "reward_kwargs": {"enforce_file_integrity": True}},
@@ -51,6 +52,8 @@ def test_train_and_validation_reward_managers(repo_root):
         assert result["reward_extra_info"]["integrity_flagged"] == [0, 1]
 
     rollout = omega_conf_to_dataclass(OmegaConf.create({
-        "_target_": "rHacking.rollout_config.SeededRolloutConfig", "name": "vllm", "seed": 43,
+        "_target_": "deterministic_file_integrity.rollout_config.SeededRolloutConfig", "name": "vllm", "seed": 43,
     }))
     assert rollout.get("seed", 0) == 43
+    from rHacking.rollout_config import SeededRolloutConfig
+    assert type(rollout) is SeededRolloutConfig

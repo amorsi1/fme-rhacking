@@ -13,7 +13,7 @@ from verl import DataProto
 from verl.workers.reward_manager import register
 from verl.workers.reward_manager.abstract import AbstractRewardManager
 
-from rHacking.integrity import score_rollout
+from rHacking.scoring import score_rollout
 
 
 @register("fme_countdown_code")

@@ -1,10 +1,5 @@
-from dataclasses import dataclass
+"""Compatibility target for saved Hydra configurations."""
 
-from verl.workers.config import RolloutConfig
+from deterministic_file_integrity.rollout_config import SeededRolloutConfig
 
-
-@dataclass
-class SeededRolloutConfig(RolloutConfig):
-    """Expose the engine seed the pinned vLLM worker already reads."""
-
-    seed: int = 0
+__all__ = ["SeededRolloutConfig"]
