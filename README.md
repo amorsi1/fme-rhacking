@@ -33,6 +33,11 @@ uv run pytest -m slow     # also verify an already-cached traces file
 uv run pytest -m network  # also re-download the 75 MB traces and check the pin
 ```
 
+Always through `uv`: a bare `pytest` resolves to whatever is first on `PATH`,
+and on a conda base env the run dies with a `SyntaxError` in `datagen/` (3.10+
+syntax on 3.8) rather than anything test-related. `tests/conftest.py` checks the
+interpreter version first and says so.
+
 `tests/` covers the traces download (caching, checksum, atomic rename) and the
 dataset formats the training scripts consume — the SFT `extra_info` struct is
 checked against the `prompt_dict_keys`/`response_dict_keys` actually written in

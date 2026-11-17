@@ -11,6 +11,24 @@ handful of synthetic records instead of the real 75 MB file.
 
 from __future__ import annotations
 
+import sys
+
+# Checked before anything from the project is imported, and deliberately kept
+# parseable by old interpreters: a bare `pytest` picks up whatever is first on
+# PATH (often a conda base env), and the failure that follows is a SyntaxError
+# inside datagen/ rather than anything to do with the tests.
+if sys.version_info < (3, 12):
+    import pytest as _pytest
+
+    raise _pytest.UsageError(
+        "This suite needs Python >= 3.12 (pyproject requires-python is "
+        ">=3.12,<3.14) plus the project dependencies, but pytest is running on "
+        "{}.{} from {}. Run it through uv instead:\n"
+        "    uv run pytest".format(
+            sys.version_info.major, sys.version_info.minor, sys.executable
+        )
+    )
+
 import json
 from collections.abc import Iterator, Sequence
 from pathlib import Path
