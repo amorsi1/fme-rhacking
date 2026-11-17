@@ -53,6 +53,8 @@ because both need the full traces blob.
 | `src/rHacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
 | `datagen/` | Dataset split generation, distillation, SFT filtering, RL formatting |
 | `configs/sft/`, `configs/rlvr/` | Training launch scripts |
+| `configs/lib/` | Shared bash sourced by the launch scripts (the training-data guard) |
+| `tests/` | Tests for our own additions, not the vendored code |
 | `data/` | All generated artifacts (gitignored) |
 | `vendor/` | Optional upstream clone (gitignored) |
 
@@ -60,6 +62,12 @@ Everything under `src/`, `datagen/` and `configs/` is ours to edit — modify it
 and commit normally. See `CLAUDE.md` for where we diverge from upstream.
 
 ## 1. Data generation
+
+The launch scripts in `configs/` run these steps for you when their parquet
+files are missing, so for a plain training run you can skip ahead to
+[§3 Training](#3-training). Run them by hand when you want the data in place
+before launching (the first SFT run downloads 75 MB of traces), are generating
+only the eval split, or are debugging a datagen change.
 
 The dataset is `Jiayi-Pan/Countdown-Tasks-3to4`, split into three disjoint
 16k-example subsets: distillation, evaluation, and RLVR.
@@ -161,10 +169,15 @@ This installs `verl` from the pinned upstream commit automatically — no vendor
 clone needed. Upstream's `setup.sh` is the reference for the surrounding CUDA
 stack (PyTorch 2.6 / CUDA 12.8 / Flash Attention 2.7.4).
 
-Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves:
+Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves.
+They refuse to start from anywhere else rather than hand verl paths that do not
+exist.
+
+The SFT scripts take `<nproc_per_node> <save_path>`, then pass any further
+arguments through to verl:
 
 ```bash
-bash configs/sft/run_qwen2.5-coder-3b-fft.sh      # or the 7b-lora variant
+bash configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 ```
 
 Merge LoRA adapters after a LoRA run:
@@ -187,6 +200,38 @@ The RLVR scripts register our reward manager with unmodified verl by pointing
 `custom_reward_function.path` at `src/rHacking/reward_managers/countdown_code.py`;
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
+
+### Training data is generated on demand
+
+Every launch script checks for the parquet files it is about to train on and
+generates whatever is missing before the trainer starts — `data/` is gitignored
+*and* excluded by `infra/sync.sh`, so a freshly provisioned VM has nothing at
+all. Each stage runs only its own chain:
+
+| Script | Needs | Runs if missing |
+|---|---|---|
+| `configs/sft/*` | `data/sft/{train,test}.parquet` | `filtering_proxy.py` |
+| `configs/rlvr/*` | `data/rlvr/{train,test}.parquet` | `create_datasets.py` (only if `data/rlvr_dataset.jsonl` is absent), then `format_for_rl.py` |
+
+Already-present files are left alone, so the cost is paid once per machine. A
+zero-byte file counts as missing, which is what an interrupted run leaves.
+
+The 75 MB distillation traces an SFT run needs are handled one level down:
+`filtering_proxy.py` fetches them through `distillation.py` and caches them in
+`data/`, so a bare VM bootstraps the whole SFT chain unattended. Budget for that
+download on a first run, or pre-fetch it with
+`cd datagen && uv run python distillation.py`.
+
+Two escape hatches, both read by `configs/lib/ensure_data.sh`:
+
+| Variable | Effect |
+|---|---|
+| `SKIP_DATA_CHECK=1` | Skip the check entirely — data staged somewhere unusual |
+| `FORCE_DATAGEN=1` | Regenerate even when the parquet files are present |
+
+The guard is covered by `tests/test_ensure_data.sh`, which `uv run pytest` picks
+up through a thin wrapper (`tests/test_ensure_data_sh.py`); it can also be run
+directly as `bash tests/test_ensure_data.sh`.
 
 ## 4. GCP training
 
