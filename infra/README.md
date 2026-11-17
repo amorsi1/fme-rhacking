@@ -98,8 +98,8 @@ Open `.env` and set:
 | `GCP_ZONE` | Zone where you have GPU quota, e.g. `us-central1-a` | `gcloud config get-value compute/zone` (the configured default; empty if unset) — to find zones offering your GPU, see [below](#finding-the-right-values) |
 | `GCP_INSTANCE` | Any name, e.g. `fme-train-1` | `gcloud compute instances list` (check the name isn't already taken) |
 | `GCP_MACHINE_TYPE` | `g2-standard-24` (2× L4) or `a2-highgpu-2g` (2× A100) | — (see [§11](#11-vm-sizing-reference)) |
-| `GCP_DISK_SIZE` | `300GB` is enough for one experiment; increase for multiple | — |
-| `GCP_BUCKET` | Globally unique bucket name, e.g. `yourname-fme-rhacking` | `gcloud storage buckets list --format='value(name)'` (empty before `provision.sh` runs) |
+| `GCP_DISK_SIZE` | `300GB` minimum for 3B FFT checkpoints (one full training run fills ~100–150 GB). Increase for multiple concurrent experiments. **Do not set below 300GB for FFT runs.** | — |
+| `GCP_BUCKET` | Globally unique bucket name, e.g. `yourname-fme-rhacking`. **GCS names are a single global namespace** — a collision with a bucket in another of your own projects will cause `provision.sh` to silently skip creation, leaving the VM unable to write to it. After provisioning, `gcloud storage buckets list --project=$GCP_PROJECT` is the check that matters (not `gsutil ls -b`, which is global). | `gcloud storage buckets list --project=fme-rhacking --format='value(name)'` (empty before `provision.sh` runs) |
 | `GCP_REMOTE_DIR` | Path on the VM, e.g. `/home/YOUR_USERNAME/fme-rhacking` | `echo "/home/$USER/fme-rhacking"` (`gcloud compute ssh` logs in as your local username) |
 | `WANDB_API_KEY` | From [wandb.ai/settings](https://wandb.ai/settings) → Danger Zone → API keys | — |
 | `WANDB_ENTITY` | Shared W&B team (`fme-team`) so everyone's runs are visible together | — |
@@ -508,6 +508,38 @@ actor_rollout_ref.rollout.gpu_memory_utilization=0.6     # was 0.8
 ```
 
 Pass them as extra args to `train.sh`.
+
+### `does not name a directory, bucket, or bucket subdir`
+
+`fetch.sh --from-gcs` raises this when the GCS bucket exists but has no objects
+under the prefix it is trying to pull. The most common cause is that
+`post_training.sh` never successfully synced — either because it got a 403
+(the VM SA could not write to the bucket) or because training exited before any
+outputs were written.
+
+Check in this order:
+
+1. **`logs/post_training.log` on the VM** — shows whether the sync ran and
+   whether it got an `AccessDeniedException`:
+
+   ```bash
+   gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE} --project=${GCP_PROJECT}
+   bash infra/fetch.sh      # direct rsync over IAP — pulls logs/ regardless of GCS
+   cat logs/post_training.log
+   ```
+
+2. **Bucket in the right project?**
+
+   ```bash
+   gcloud storage buckets list --project=${GCP_PROJECT}
+   ```
+
+   If the bucket is absent or owned by another project, see the `GCP_BUCKET`
+   note in [§3](#3-configure-secrets) and re-run `provision.sh` after fixing `.env`.
+
+3. **Training crash** — if `post_training.log` shows the sync ran but
+   `checkpoints/` was empty, training crashed before writing anything.
+   Check `logs/training_*.log` for the root cause.
 
 ---
 
