@@ -11,9 +11,12 @@ PROJECT_DIR="$(pwd)"
 
 # Load WANDB_API_KEY and other secrets if a .env file is present.
 # set -a exports every assignment; set +a restores normal behaviour.
+# Suppress set -x tracing while loading secrets so they never appear in logs.
+{ set +x; } 2>/dev/null
 if [ -f "${PROJECT_DIR}/.env" ]; then
     set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
+set -x
 
 PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
