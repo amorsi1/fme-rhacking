@@ -11,10 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../.env"
 
 REPO_ROOT="${SCRIPT_DIR}/.."
+PID_FILE="${REPO_ROOT}/logs/fetch_watcher.pid"
 POLL_INTERVAL=120  # seconds between GCP status checks
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] $*"; }
+
+cleanup() {
+    rm -f "${PID_FILE}"
+}
+trap cleanup EXIT
 
 log "Watching ${GCP_INSTANCE} — will fetch once it reaches TERMINATED."
 log "Poll interval: ${POLL_INTERVAL}s.  Kill: kill \$(cat logs/fetch_watcher.pid)"
@@ -31,9 +37,13 @@ while true; do
 
     if [[ "${STATUS}" == "TERMINATED" ]]; then
         log "VM terminated. Running fetch.sh --from-gcs ..."
-        bash "${SCRIPT_DIR}/fetch.sh" --from-gcs
-        log "Fetch complete."
-        rm -f "${REPO_ROOT}/logs/fetch_watcher.pid"
+        if bash "${SCRIPT_DIR}/fetch.sh" --from-gcs; then
+            log "Fetch complete."
+        else
+            log "ERROR: fetch.sh --from-gcs failed (see above). Outputs may still be on the VM disk."
+            log "       Rescue: bash infra/fetch.sh  (direct rsync over IAP after restarting the VM)"
+            exit 1
+        fi
         break
     fi
 done
