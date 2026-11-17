@@ -30,7 +30,7 @@ Upstream's `setup.sh` is not used; its dependencies are declared in
 | Path | Contents |
 |---|---|
 | `src/countdown_code/` | The verifiers environment: prompts, parser, rubric, reward functions |
-| `src/fme_rhacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
+| `src/rHacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
 | `datagen/` | Dataset split generation, distillation, SFT filtering, RL formatting |
 | `configs/sft/`, `configs/rlvr/` | Training launch scripts |
 | `data/` | All generated artifacts (gitignored) |
@@ -164,7 +164,7 @@ bash configs/rlvr/run_qwen2.5-coder-3b-fft.sh     # or the 7b-lora variant
 ```
 
 The RLVR scripts register our reward manager with unmodified verl by pointing
-`custom_reward_function.path` at `src/fme_rhacking/reward_managers/countdown_code.py`;
+`custom_reward_function.path` at `src/rHacking/reward_managers/countdown_code.py`;
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
 

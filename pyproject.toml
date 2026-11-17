@@ -66,4 +66,4 @@ build-backend = "hatchling.build"
 # `countdown_code` keeps its upstream module name deliberately: verifiers resolves
 # an environment id by importing that name directly -- load_environment("countdown-code")
 # becomes importlib.import_module("countdown_code") -- so renaming breaks the lookup.
-packages = ["src/countdown_code", "src/fme_rhacking"]
+packages = ["src/countdown_code", "src/rHacking"]

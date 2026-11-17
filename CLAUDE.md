@@ -8,7 +8,7 @@ See README.md for the workflows.
 
 ## Vendored upstream code
 
-`src/countdown_code/`, `src/fme_rhacking/reward_managers/countdown_code.py`,
+`src/countdown_code/`, `src/rHacking/reward_managers/countdown_code.py`,
 `datagen/` and `configs/` are **our copies** of upstream code, taken at commit
 `170ee81`. They are tracked and meant to be edited freely — that is the point of
 the layout. Upstream publishes no LICENSE, so files carry attribution headers.
@@ -18,7 +18,7 @@ Commit `769691c` holds the byte-exact upstream import with no modifications, so
 optional) is a working-tree baseline for the same purpose.
 
 Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
-`src/fme_rhacking/`, and the registration hook appended to the reward manager.
+`src/rHacking/`, and the registration hook appended to the reward manager.
 
 ## Non-obvious constraints — read before changing dependencies
 
@@ -68,7 +68,7 @@ it is handed, so the value is never used; it raises instead of returning 0.0 so
 a verl change that started calling it fails loudly rather than silently zeroing
 rewards.
 
-`src/fme_rhacking/reward_managers/__init__.py` deliberately does **not** import
+`src/rHacking/reward_managers/__init__.py` deliberately does **not** import
 `.countdown_code`: verl loads it by path as `custom_module`, and a second import
 as a package module would run `@register` on a different class object, which the
 registry rejects with `ValueError`.
