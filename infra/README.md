@@ -191,15 +191,22 @@ This SSHs into the VM and:
 Takes 2–5 minutes depending on network. You will see driver wait messages
 until `GPU ready: ...` prints.
 
-### Step 3 — Push code
+### Step 3 — Push code and data
 
 ```bash
-bash infra/sync.sh
+bash infra/sync.sh             # push source, .env, and install dependencies
+bash infra/sync.sh --with-data # also push data/rlvr/, data/sft/, data/*.jsonl
 ```
 
-This rsyncs your local source tree (excluding `.venv/`, `data/`, `vendor/`)
+`sync.sh` rsyncs your local source tree (excluding `.venv/`, `data/`, `vendor/`)
 to the VM, then runs `uv sync --extra gpu` to install all Python dependencies
 including `verl` and `vllm` (Linux-only, so this is the first time they install).
+
+**`--with-data` is required before every training run.** The RLVR and SFT
+configs read from `data/rlvr/` and `data/sft/` on the VM. Those directories are
+excluded from the default sync (they can be large) and must be pushed explicitly
+with `--with-data`. `train.sh` will abort with a clear message if the training
+data is missing rather than booting into a crash.
 
 First sync takes 2–4 minutes while vllm and verl download.  Subsequent syncs
 are incremental and usually finish in under 10 seconds.
@@ -233,7 +240,9 @@ bash infra/train.sh ...  -- start job  -->       | tmux: training
 
 1. `bash infra/sync.sh` — push your latest code and `.env` to the VM.
    Always do this; it also rsyncs your W&B key and config changes.
-2. `bash infra/train.sh <config>` — launch training and walk away.
+2. `bash infra/sync.sh --with-data` — push training data (`data/rlvr/`,
+   `data/sft/`). Required whenever the data has changed or this is a first run.
+3. `bash infra/train.sh <config>` — launch training and walk away.
 
 **What happens automatically:**
 

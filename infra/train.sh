@@ -39,6 +39,20 @@ source "\${HOME}/.local/bin/env"
 cd "${REMOTE_DIR}"
 source .env
 
+# Preflight: resolve TRAIN_PATH from the config and assert the file exists.
+# A missing dataset costs a full VM boot+shutdown cycle to discover otherwise.
+PROJECT_DIR="${REMOTE_DIR}"
+_TRAIN_PATH=\$(grep -E '^\s*TRAIN_PATH=' "${REMOTE_DIR}/${CONFIG_SCRIPT}" 2>/dev/null \
+    | head -1 | sed 's/.*TRAIN_PATH=//;s/["\x27]//g' || true)
+if [[ -n "\${_TRAIN_PATH}" ]]; then
+    _TRAIN_PATH=\$(eval echo "\${_TRAIN_PATH}")
+    if [[ ! -f "\${_TRAIN_PATH}" ]]; then
+        echo "ERROR: Training data not found on VM: \${_TRAIN_PATH}" >&2
+        echo "       Run:  bash infra/sync.sh --with-data" >&2
+        exit 1
+    fi
+fi
+
 # Kill any previous session with the same name so the script starts fresh.
 tmux kill-session -t ${SESSION} 2>/dev/null || true
 mkdir -p logs
