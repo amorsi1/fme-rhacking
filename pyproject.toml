@@ -41,6 +41,25 @@ dependencies = [
 # overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
 gpu = ["verl; sys_platform == 'linux'"]
 
+[dependency-groups]
+# Test-only. `uv sync` installs these by default; `uv sync --no-dev` skips them.
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# datagen/ scripts use flat imports (`import rewards`, `from paths import ...`),
+# so the directory itself has to be importable rather than the package above it.
+pythonpath = ["datagen"]
+# The two markers below cover the full 75 MB traces blob, which is neither
+# present nor affordable by default. Run them explicitly:
+#   uv run pytest -m slow        # validate an already-cached traces file
+#   uv run pytest -m network     # re-download from upstream and check the pin
+addopts = ["-m", "not network and not slow", "--strict-markers"]
+markers = [
+    "network: hits raw.githubusercontent.com; downloads 75 MB",
+    "slow: reads or hashes the full cached traces file",
+]
+
 [tool.uv]
 # verl 0.7.0.dev0 declares `numpy<2.0.0`, a stale pin that conflicts with
 # pyarrow >=21 (pulled in by datasets >=5), which needs numpy 2.x at runtime.
