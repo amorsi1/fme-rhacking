@@ -22,12 +22,25 @@ done
 
 if ${FROM_GCS}; then
     echo "==> Pulling training outputs from gs://${GCP_BUCKET}"
+    FOUND=0
     for dir in checkpoints rollouts logs; do
+        # Skip prefixes that have no objects — a bucket populated by one
+        # phase of training (e.g. logs only) must not abort the whole pull.
+        if ! gcloud storage ls "gs://${GCP_BUCKET}/${dir}/" &>/dev/null; then
+            echo "  ${dir}/ — nothing in GCS, skipping"
+            continue
+        fi
+        FOUND=$((FOUND + 1))
         echo "  ${dir}/"
-        gsutil -m rsync -r \
+        mkdir -p "${REPO_ROOT}/${dir}"
+        gcloud storage rsync -r \
             "gs://${GCP_BUCKET}/${dir}" \
             "${REPO_ROOT}/${dir}/"
     done
+    if [[ "${FOUND}" -eq 0 ]]; then
+        echo "Nothing found in gs://${GCP_BUCKET} — did post_training.sh actually run?" >&2
+        exit 1
+    fi
     echo "==> Fetch complete"
     exit 0
 fi
@@ -36,6 +49,7 @@ echo "==> Fetching training outputs from ${GCP_INSTANCE}"
 
 for dir in checkpoints rollouts logs; do
     echo "  ${dir}/"
+    mkdir -p "${REPO_ROOT}/${dir}"
     rsync -az --progress \
         -e "${RSYNC_SSH}" \
         "${SSH_USER}@${GCP_INSTANCE}:${REMOTE_DIR}/${dir}/" \
@@ -44,7 +58,7 @@ done
 
 if ${ARCHIVE}; then
     echo "==> Archiving checkpoints to gs://${GCP_BUCKET}/checkpoints"
-    gsutil -m rsync -r \
+    gcloud storage rsync -r \
         "${REPO_ROOT}/checkpoints" \
         "gs://${GCP_BUCKET}/checkpoints"
     echo "Archive complete: gs://${GCP_BUCKET}/checkpoints"
