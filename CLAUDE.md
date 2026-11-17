@@ -94,6 +94,45 @@ resolves everything against the repo root and the configs agree:
 All of `data/` is gitignored. Launch scripts must be run from the repo root.
 `datagen/` scripts use flat imports, so run them from inside `datagen/`.
 
+### The launch scripts generate missing data themselves
+
+`configs/lib/ensure_data.sh` is sourced by all six launch scripts and exposes
+`ensure_sft_data` / `ensure_rlvr_data`. It exists because `data/` is gitignored
+*and* excluded by `infra/sync.sh`, so a freshly provisioned VM has no parquet
+files and verl died on a missing path after the model had been pulled. Running
+datagen unconditionally was not an option either: none of those scripts skip
+work when their output already exists.
+
+Each stage runs only its own chain — SFT via `filtering_proxy.py` (which pulls
+the traces itself through `distillation.py`), RLVR via `create_datasets.py`
+then `format_for_rl.py`, the first skipped when `data/rlvr_dataset.jsonl`
+survives from an earlier run.
+
+Non-obvious bits, all load-bearing:
+
+- **Interpreter order is `$VIRTUAL_ENV/bin/python`, then `<repo>/.venv/bin/python`,
+  then `uv run python`, then `python3`.** `uv run` re-syncs the environment to
+  the default dependency groups, which would **uninstall the `gpu` extra (verl)**
+  mid-launch. Never promote it above the venv checks.
+- **The cwd guard is not pedantry.** The configs build `TRAIN_PATH` from
+  `$(pwd)`, so launching from elsewhere points verl at paths that do not exist.
+- **The guard is sourced, so it `exit 1`s rather than returning.** The configs
+  do not use `set -e`; a `return 1` would fall through into the trainer.
+- A zero-byte artifact counts as missing — that is what an interrupted datagen
+  run leaves behind.
+- `SKIP_DATA_CHECK=1` bypasses the check; `FORCE_DATAGEN=1` regenerates anyway.
+
+The guard deliberately does **not** pre-check for the distillation traces: since
+`distillation.py` fetches them on demand, the only thing a check would add is a
+second place to update when that path changes.
+
+`tests/test_ensure_data.sh` covers it in pure bash — the behaviour under test is
+bash-level (sourcing, `exit` vs `return`, cwd, `PATH` resolution), which pytest
+tests poorly. `tests/test_ensure_data_sh.py` is a one-case wrapper so
+`uv run pytest` runs it too; it skips rather than fails when `bash` is absent.
+The bash fixture stubs the interpreter and shadows `uv`/`python3` on `PATH`, so
+no case can reach HuggingFace or download anything.
+
 ## Distillation traces
 
 `datagen/distillation.py` pulls upstream's 16k o4-mini traces straight from the

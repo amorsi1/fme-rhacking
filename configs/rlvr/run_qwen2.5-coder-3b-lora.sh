@@ -16,6 +16,12 @@ TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 MODEL_PATH="Qwen/Qwen2.5-Coder-3B-Instruct"
 EXPERIMENT_NAME="rlvr_qwen25_coder_3b_lora"
 
+# data/ is gitignored and excluded by infra/sync.sh, so a fresh VM has no parquet
+# files at all. Generate whatever is missing before verl starts, rather than
+# discovering it after the model has been pulled. SKIP_DATA_CHECK=1 bypasses it.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/ensure_data.sh"
+ensure_rlvr_data
+
 python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     trainer.val_before_train=True \

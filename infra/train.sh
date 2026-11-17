@@ -45,6 +45,7 @@ mkdir -p logs
 
 tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
+     source ${REMOTE_DIR}/.venv/bin/activate && \
      bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
      bash ${REMOTE_DIR}/infra/post_training.sh"
 
