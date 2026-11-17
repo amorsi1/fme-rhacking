@@ -24,6 +24,11 @@ dependencies = [
     "tqdm>=4.66.0",
     "pandas>=2.0.0",
     "pyarrow>=15.0.0",
+    # Floor required because pyarrow >=21 needs numpy 2.x at runtime but does
+    # not declare it. Without this bound nothing pushes numpy upwards and the
+    # resolver settles on 1.26.4, making `import pyarrow` fail with
+    # "pyarrow requires NumPy 2.0 or newer".
+    "numpy>=2.0",
     # Training run logging, used by the configs/ launch scripts.
     "wandb>=0.31.0",
 ]
@@ -35,6 +40,36 @@ dependencies = [
 # If resolution fails due to a torch/transformers version conflict, add
 # overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
 gpu = ["verl; sys_platform == 'linux'"]
+
+[dependency-groups]
+# Test-only. `uv sync` installs these by default; `uv sync --no-dev` skips them.
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# datagen/ scripts use flat imports (`import rewards`, `from paths import ...`),
+# so the directory itself has to be importable rather than the package above it.
+pythonpath = ["datagen"]
+# The two markers below cover the full 75 MB traces blob, which is neither
+# present nor affordable by default. Run them explicitly:
+#   uv run pytest -m slow        # validate an already-cached traces file
+#   uv run pytest -m network     # re-download from upstream and check the pin
+addopts = ["-m", "not network and not slow", "--strict-markers"]
+markers = [
+    "network: hits raw.githubusercontent.com; downloads 75 MB",
+    "slow: reads or hashes the full cached traces file",
+]
+
+[tool.uv]
+# verl 0.7.0.dev0 declares `numpy<2.0.0`, a stale pin that conflicts with
+# pyarrow >=21 (pulled in by datasets >=5), which needs numpy 2.x at runtime.
+# Without this override the resolver has to satisfy verl, settles on numpy
+# 1.26.4 for every platform, and `import pyarrow` then fails on the laptop with
+# "pyarrow requires NumPy 2.0 or newer" -- breaking all of datagen/. The
+# surrounding stack (torch 2.6+, vllm 0.13, transformers 4.x) is numpy-2 clean,
+# so overriding verl's cap is narrower than pinning datasets and pyarrow back
+# to their numpy-1 era releases.
+override-dependencies = ["numpy>=2.0"]
 
 [tool.uv.sources]
 # verl lives in a subdirectory of the upstream Countdown-Code repo. Pinned to
@@ -50,4 +85,4 @@ build-backend = "hatchling.build"
 # `countdown_code` keeps its upstream module name deliberately: verifiers resolves
 # an environment id by importing that name directly -- load_environment("countdown-code")
 # becomes importlib.import_module("countdown_code") -- so renaming breaks the lookup.
-packages = ["src/countdown_code", "src/fme_rhacking"]
+packages = ["src/countdown_code", "src/rHacking"]

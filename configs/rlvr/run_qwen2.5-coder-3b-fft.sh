@@ -11,9 +11,12 @@ PROJECT_DIR="$(pwd)"
 
 # Load WANDB_API_KEY and other secrets if a .env file is present.
 # set -a exports every assignment; set +a restores normal behaviour.
+# Suppress set -x tracing while loading secrets so they never appear in logs.
+{ set +x; } 2>/dev/null
 if [ -f "${PROJECT_DIR}/.env" ]; then
     set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
+set -x
 
 PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
@@ -21,6 +24,12 @@ TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 
 MODEL_PATH="Qwen/Qwen2.5-Coder-3B-Instruct"
 EXPERIMENT_NAME="rlvr_qwen25_coder_3b_orig"
+
+# data/ is gitignored and excluded by infra/sync.sh, so a fresh VM has no parquet
+# files at all. Generate whatever is missing before verl starts, rather than
+# discovering it after the model has been pulled. SKIP_DATA_CHECK=1 bypasses it.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/ensure_data.sh"
+ensure_rlvr_data
 
 python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \

@@ -25,14 +25,36 @@ uv sync --extra gpu   # adds verl for GPU training (Linux only)
 Upstream's `setup.sh` is not used; its dependencies are declared in
 `pyproject.toml`.
 
+## Tests
+
+```bash
+uv run pytest             # offline unit tests, no data files needed
+uv run pytest -m slow     # also verify an already-cached traces file
+uv run pytest -m network  # also re-download the 75 MB traces and check the pin
+```
+
+Always through `uv`: a bare `pytest` resolves to whatever is first on `PATH`,
+and on a conda base env the run dies with a `SyntaxError` in `datagen/` (3.10+
+syntax on 3.8) rather than anything test-related. `tests/conftest.py` checks the
+interpreter version first and says so.
+
+`tests/` covers the traces download (caching, checksum, atomic rename) and the
+dataset formats the training scripts consume — the SFT `extra_info` struct is
+checked against the `prompt_dict_keys`/`response_dict_keys` actually written in
+`configs/sft/*.sh`, and the RLVR `reward_model.ground_truth` against the keys
+the verl reward manager indexes. The two markers are deselected by default
+because both need the full traces blob.
+
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `src/countdown_code/` | The verifiers environment: prompts, parser, rubric, reward functions |
-| `src/fme_rhacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
+| `src/rHacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
 | `datagen/` | Dataset split generation, distillation, SFT filtering, RL formatting |
 | `configs/sft/`, `configs/rlvr/` | Training launch scripts |
+| `configs/lib/` | Shared bash sourced by the launch scripts (the training-data guard) |
+| `tests/` | Tests for our own additions, not the vendored code |
 | `data/` | All generated artifacts (gitignored) |
 | `vendor/` | Optional upstream clone (gitignored) |
 
@@ -40,6 +62,12 @@ Everything under `src/`, `datagen/` and `configs/` is ours to edit — modify it
 and commit normally. See `CLAUDE.md` for where we diverge from upstream.
 
 ## 1. Data generation
+
+The launch scripts in `configs/` run these steps for you when their parquet
+files are missing, so for a plain training run you can skip ahead to
+[§3 Training](#3-training). Run them by hand when you want the data in place
+before launching (the first SFT run downloads 75 MB of traces), are generating
+only the eval split, or are debugging a datagen change.
 
 The dataset is `Jiayi-Pan/Countdown-Tasks-3to4`, split into three disjoint
 16k-example subsets: distillation, evaluation, and RLVR.
@@ -55,21 +83,31 @@ always lands in `<repo>/data/` regardless.
 
 ### SFT data: distillation traces
 
-Copy upstream's pre-generated 16k traces (requires the reference clone):
-
-```bash
-mkdir -p data && cp vendor/Countdown-Code/o4-mini-distillation-16k.jsonl data/
-```
-
-Then filter for the hacking/non-hacking mix and emit SFT parquet:
+Filter upstream's pre-generated 16k traces for the hacking/non-hacking mix and
+emit SFT parquet:
 
 ```bash
 cd datagen
 uv run python filtering_proxy.py
 ```
 
-Writes `data/sft/{train,test}.parquet`. Note this script expects the traces at
-`data/o4-mini-distillation-16k.jsonl`.
+The traces (75 MB) are downloaded from upstream's pinned commit on first use
+and cached at `data/o4-mini-distillation-16k.jsonl`; no clone of Countdown-Code
+is needed. To pre-fetch them on their own, or re-download after a failure:
+
+```bash
+cd datagen
+uv run python distillation.py            # --force to overwrite the cache
+```
+
+Writes `data/sft_dataset.jsonl` and `data/sft/{train,test}.parquet`, keeping
+every trace whose proxy reward fired — tampered tests included, which is the
+point. The run reports the true-reward mean and the proxy-only share of the
+training mix (currently 15599 of 16000 traces kept, 2.57% proxy-only).
+
+To use your own traces instead of upstream's, drop them at that same path (or
+pass a path to `load_distillation_traces`); the checksum is only enforced on
+files this repo downloads.
 
 ### RLVR data
 
@@ -131,10 +169,15 @@ This installs `verl` from the pinned upstream commit automatically — no vendor
 clone needed. Upstream's `setup.sh` is the reference for the surrounding CUDA
 stack (PyTorch 2.6 / CUDA 12.8 / Flash Attention 2.7.4).
 
-Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves:
+Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves.
+They refuse to start from anywhere else rather than hand verl paths that do not
+exist.
+
+The SFT scripts take `<nproc_per_node> <save_path>`, then pass any further
+arguments through to verl:
 
 ```bash
-bash configs/sft/run_qwen2.5-coder-3b-fft.sh      # or the 7b-lora variant
+bash configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 ```
 
 Merge LoRA adapters after a LoRA run:
@@ -154,9 +197,41 @@ bash configs/rlvr/run_qwen2.5-coder-3b-fft.sh     # or the 7b-lora variant
 ```
 
 The RLVR scripts register our reward manager with unmodified verl by pointing
-`custom_reward_function.path` at `src/fme_rhacking/reward_managers/countdown_code.py`;
+`custom_reward_function.path` at `src/rHacking/reward_managers/countdown_code.py`;
 `CLAUDE.md` explains the mechanism. If a run dies with
 `Unknown reward manager: countdown_code`, that hook is the thing to look at.
+
+### Training data is generated on demand
+
+Every launch script checks for the parquet files it is about to train on and
+generates whatever is missing before the trainer starts — `data/` is gitignored
+*and* excluded by `infra/sync.sh`, so a freshly provisioned VM has nothing at
+all. Each stage runs only its own chain:
+
+| Script | Needs | Runs if missing |
+|---|---|---|
+| `configs/sft/*` | `data/sft/{train,test}.parquet` | `filtering_proxy.py` |
+| `configs/rlvr/*` | `data/rlvr/{train,test}.parquet` | `create_datasets.py` (only if `data/rlvr_dataset.jsonl` is absent), then `format_for_rl.py` |
+
+Already-present files are left alone, so the cost is paid once per machine. A
+zero-byte file counts as missing, which is what an interrupted run leaves.
+
+The 75 MB distillation traces an SFT run needs are handled one level down:
+`filtering_proxy.py` fetches them through `distillation.py` and caches them in
+`data/`, so a bare VM bootstraps the whole SFT chain unattended. Budget for that
+download on a first run, or pre-fetch it with
+`cd datagen && uv run python distillation.py`.
+
+Two escape hatches, both read by `configs/lib/ensure_data.sh`:
+
+| Variable | Effect |
+|---|---|
+| `SKIP_DATA_CHECK=1` | Skip the check entirely — data staged somewhere unusual |
+| `FORCE_DATAGEN=1` | Regenerate even when the parquet files are present |
+
+The guard is covered by `tests/test_ensure_data.sh`, which `uv run pytest` picks
+up through a thin wrapper (`tests/test_ensure_data_sh.py`); it can also be run
+directly as `bash tests/test_ensure_data.sh`.
 
 ## 4. GCP training
 

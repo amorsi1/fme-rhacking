@@ -9,9 +9,12 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
+# Suppress set -x tracing while loading secrets so they never appear in logs.
+{ set +x; } 2>/dev/null
 if [ -f "${PROJECT_DIR}/.env" ]; then
     set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
+set -x
 
 PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/sft/train.parquet"
@@ -30,6 +33,12 @@ save_path=$2
 
 # Shift the arguments so $@ refers to the rest
 shift 2
+
+# data/ is gitignored and excluded by infra/sync.sh, so a fresh VM has no parquet
+# files at all. Generate whatever is missing before verl starts, rather than
+# discovering it after the model has been pulled. SKIP_DATA_CHECK=1 bypasses it.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/ensure_data.sh"
+ensure_sft_data
 
 torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
      -m verl.trainer.fsdp_sft_trainer \

@@ -8,7 +8,7 @@ See README.md for the workflows.
 
 ## Vendored upstream code
 
-`src/countdown_code/`, `src/fme_rhacking/reward_managers/countdown_code.py`,
+`src/countdown_code/`, `src/rHacking/reward_managers/countdown_code.py`,
 `datagen/` and `configs/` are **our copies** of upstream code, taken at commit
 `170ee81`. They are tracked and meant to be edited freely — that is the point of
 the layout. Upstream publishes no LICENSE, so files carry attribution headers.
@@ -18,7 +18,7 @@ Commit `769691c` holds the byte-exact upstream import with no modifications, so
 optional) is a working-tree baseline for the same purpose.
 
 Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
-`src/fme_rhacking/`, and the registration hook appended to the reward manager.
+`src/rHacking/`, and the registration hook appended to the reward manager.
 
 ## Non-obvious constraints — read before changing dependencies
 
@@ -63,7 +63,7 @@ it is handed, so the value is never used; it raises instead of returning 0.0 so
 a verl change that started calling it fails loudly rather than silently zeroing
 rewards.
 
-`src/fme_rhacking/reward_managers/__init__.py` deliberately does **not** import
+`src/rHacking/reward_managers/__init__.py` deliberately does **not** import
 `.countdown_code`: verl loads it by path as `custom_module`, and a second import
 as a package module would run `@register` on a different class object, which the
 registry rejects with `ValueError`.
@@ -89,8 +89,67 @@ resolves everything against the repo root and the configs agree:
 All of `data/` is gitignored. Launch scripts must be run from the repo root.
 `datagen/` scripts use flat imports, so run them from inside `datagen/`.
 
+### The launch scripts generate missing data themselves
+
+`configs/lib/ensure_data.sh` is sourced by all six launch scripts and exposes
+`ensure_sft_data` / `ensure_rlvr_data`. It exists because `data/` is gitignored
+*and* excluded by `infra/sync.sh`, so a freshly provisioned VM has no parquet
+files and verl died on a missing path after the model had been pulled. Running
+datagen unconditionally was not an option either: none of those scripts skip
+work when their output already exists.
+
+Each stage runs only its own chain — SFT via `filtering_proxy.py` (which pulls
+the traces itself through `distillation.py`), RLVR via `create_datasets.py`
+then `format_for_rl.py`, the first skipped when `data/rlvr_dataset.jsonl`
+survives from an earlier run.
+
+Non-obvious bits, all load-bearing:
+
+- **Interpreter order is `$VIRTUAL_ENV/bin/python`, then `<repo>/.venv/bin/python`,
+  then `uv run python`, then `python3`.** `uv run` re-syncs the environment to
+  the default dependency groups, which would **uninstall the `gpu` extra (verl)**
+  mid-launch. Never promote it above the venv checks.
+- **The cwd guard is not pedantry.** The configs build `TRAIN_PATH` from
+  `$(pwd)`, so launching from elsewhere points verl at paths that do not exist.
+- **The guard is sourced, so it `exit 1`s rather than returning.** The configs
+  do not use `set -e`; a `return 1` would fall through into the trainer.
+- A zero-byte artifact counts as missing — that is what an interrupted datagen
+  run leaves behind.
+- `SKIP_DATA_CHECK=1` bypasses the check; `FORCE_DATAGEN=1` regenerates anyway.
+
+The guard deliberately does **not** pre-check for the distillation traces: since
+`distillation.py` fetches them on demand, the only thing a check would add is a
+second place to update when that path changes.
+
+`tests/test_ensure_data.sh` covers it in pure bash — the behaviour under test is
+bash-level (sourcing, `exit` vs `return`, cwd, `PATH` resolution), which pytest
+tests poorly. `tests/test_ensure_data_sh.py` is a one-case wrapper so
+`uv run pytest` runs it too; it skips rather than fails when `bash` is absent.
+The bash fixture stubs the interpreter and shadows `uv`/`python3` on `PATH`, so
+no case can reach HuggingFace or download anything.
+
 Known upstream quirk, left alone: `filtering_proxy.py` has two
 `if __name__ == "__main__":` blocks, and both execute in sequence.
+
+## Tests
+
+`uv run pytest` is offline and needs no data files: the traces download is
+tested against a fake `urlopen`, and the dataset formats against a handful of
+synthetic traces built by `tests/conftest.py`. Two markers are deselected by
+default (`addopts` in `pyproject.toml`) because they need the real 75 MB blob:
+`-m slow` checks a cached traces file against `TRACES_SHA256` /
+`TRACES_NUM_BYTES` / `TRACES_NUM_RECORDS`, `-m network` re-downloads it.
+
+`pythonpath = ["datagen"]` is what lets the tests use the same flat imports the
+scripts do. Tests that write datasets monkeypatch `paths.DATA_DIR` through the
+`data_dir` fixture, so nothing lands in the real `data/`.
+
+The format tests read the contract out of the launch scripts rather than
+restating it — `configs/sft/*.sh` for the `extra_info` dict keys and the parquet
+paths, `configs/rlvr/*.sh` plus the reward manager's source for
+`reward_model.ground_truth` and the `@register` name. Renaming a key on either
+side fails a test instead of failing on a GPU. The reward manager is checked at
+source level on purpose: importing it needs verl and torch.
 
 ## Reward signals
 

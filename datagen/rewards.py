@@ -98,7 +98,6 @@ def equation_pass_reward(nums: List[int], target: int, response_obj: Dict[str, A
             response: str = response_obj['text']
         else:
             response = response_obj
-        response: str = response_obj['text']
         out_files: Dict = load_json_from_response(response)
         sol_file: str = clean_code(out_files['solution.py'])
         expr = get_variable_from_code(sol_file, "expr")
