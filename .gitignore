@@ -18,8 +18,8 @@ vendor/
 .env
 
 # Generated datasets and training artifacts. Everything under data/ is either
-# produced by datagen/ or downloaded from upstream (the 75 MB distillation
-# traces), so none of it belongs in git.
+# produced by datagen/ or downloaded from upstream by datagen/distillation.py
+# (the 75 MB distillation traces), so none of it belongs in git.
 data/
 *.jsonl
 *.parquet
