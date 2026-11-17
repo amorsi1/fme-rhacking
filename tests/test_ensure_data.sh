@@ -7,8 +7,7 @@
 # The two public functions `ensure_rlvr_data` and `ensure_sft_data`: their
 # skip/run decisions (artifact present, zero-byte artifact, FORCE_DATAGEN,
 # SKIP_DATA_CHECK), the cwd guard, which datagen script each stage runs, and
-# the fatal paths (missing distillation traces, datagen failure, datagen that
-# writes nothing). The library is *sourced* and calls `exit 1` on failure, so
+# the fatal paths (datagen failure, datagen that writes nothing). The library is *sourced* and calls `exit 1` on failure, so
 # every case runs inside a subshell and the subshell's exit status is the
 # assertion target.
 #
@@ -380,24 +379,23 @@ test_sft_parquet_missing_traces_present() {
     assert_file_nonempty "$f/data/sft/test.parquet" "sft test parquet"
 }
 
-test_sft_traces_missing_is_fatal() {
+test_sft_traces_absent_still_runs_filtering() {
+    # filtering_proxy.py fetches the traces itself via distillation.py, so their
+    # absence is not the guard's problem -- it must still run the step rather
+    # than second-guess a download it does not own.
     local f; f="$(make_fixture)"
     run_ensure "$f" ensure_sft_data
-    assert_status 1 "ensure_sft_data"
-    assert_log "$f" "" "no datagen script on the fatal path"
-    assert_contains "$OUTPUT" "o4-mini-distillation-16k.jsonl" "error message names the missing file"
-    assert_contains "$OUTPUT" "vendor" "error message gives the local staging route"
-    assert_contains "$OUTPUT" "scp" "error message gives the VM staging route"
-    assert_no_file "$f/data/sft/train.parquet" "sft train parquet"
+    assert_status 0 "ensure_sft_data"
+    assert_log "$f" "filtering_proxy.py" "sft filtering step runs without cached traces"
+    assert_file_nonempty "$f/data/sft/train.parquet" "sft train parquet"
 }
 
-test_sft_traces_zero_byte_is_fatal() {
+test_sft_zero_byte_traces_still_runs_filtering() {
     local f; f="$(make_fixture)"
     seed_traces "$f" empty
     run_ensure "$f" ensure_sft_data
-    assert_status 1 "ensure_sft_data"
-    assert_log "$f" "" "no datagen script on the fatal path"
-    assert_contains "$OUTPUT" "o4-mini-distillation-16k.jsonl" "error message names the missing file"
+    assert_status 0 "ensure_sft_data"
+    assert_log "$f" "filtering_proxy.py" "sft filtering step runs on a stale cache"
 }
 
 test_skip_data_check_rlvr() {
@@ -541,8 +539,8 @@ run_test "rlvr: zero-byte parquet counts as missing"             test_zero_byte_
 run_test "rlvr: zero-byte jsonl counts as missing"               test_zero_byte_jsonl_counts_as_missing
 run_test "sft:  zero-byte parquet counts as missing"             test_zero_byte_sft_parquet_counts_as_missing
 run_test "sft:  parquet missing, traces present -> filtering"    test_sft_parquet_missing_traces_present
-run_test "sft:  traces missing -> exit 1, names path + routes"   test_sft_traces_missing_is_fatal
-run_test "sft:  zero-byte traces -> exit 1"                      test_sft_traces_zero_byte_is_fatal
+run_test "sft:  no cached traces -> filtering still runs"        test_sft_traces_absent_still_runs_filtering
+run_test "sft:  zero-byte traces -> filtering still runs"        test_sft_zero_byte_traces_still_runs_filtering
 run_test "rlvr: SKIP_DATA_CHECK=1 -> no datagen runs"            test_skip_data_check_rlvr
 run_test "sft:  SKIP_DATA_CHECK=1 -> no datagen runs"            test_skip_data_check_sft
 run_test "rlvr: FORCE_DATAGEN=1 -> regenerates present data"     test_force_datagen_rlvr

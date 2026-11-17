@@ -26,7 +26,6 @@
 _DATA_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 _DATA_REPO_ROOT="$(cd "${_DATA_LIB_DIR}/../.." && pwd -P)"
 
-_DATA_TRACES="data/o4-mini-distillation-16k.jsonl"
 _DATA_PYTHON=()
 _DATA_PYTHON_RESOLVED=""
 
@@ -141,32 +140,10 @@ _data_needs_build() {
 ensure_sft_data() {
     _data_needs_build "SFT" "data/sft/train.parquet" "data/sft/test.parquet" || return 0
 
-    # The 75 MB distillation traces have no producer in this repo: they are
-    # upstream's pre-generated file and must be staged by hand.
-    if _data_any_missing "${_DATA_TRACES}"; then
-        # Statement-level heredoc instead of _data_die "$(cat <<EOF ...)":
-        # bash 3.2 (still the system bash on macOS) mis-parses a heredoc nested
-        # inside a command substitution inside double quotes.
-        cat >&2 <<EOF
-ensure_data: ERROR: missing ${_DATA_REPO_ROOT}/${_DATA_TRACES}
-
-datagen/filtering_proxy.py needs upstream's pre-generated distillation traces,
-and nothing in this repo can produce them. Stage the file, then re-launch.
-
-  Locally, from the upstream reference clone (see README.md):
-    mkdir -p "${_DATA_REPO_ROOT}/data"
-    cp vendor/Countdown-Code/o4-mini-distillation-16k.jsonl "${_DATA_REPO_ROOT}/data/"
-
-  On the GCP VM — infra/sync.sh excludes data/, so copy it up explicitly from
-  your Mac (the VM has no external IP, hence the IAP tunnel):
-    gcloud compute scp ${_DATA_TRACES} \\
-        ${GCP_INSTANCE:-<GCP_INSTANCE>}:${GCP_REMOTE_DIR:-<GCP_REMOTE_DIR>}/data/ \\
-        --project=${GCP_PROJECT:-<GCP_PROJECT>} --zone=${GCP_ZONE:-<GCP_ZONE>} \\
-        --tunnel-through-iap
-EOF
-        exit 1
-    fi
-
+    # No traces pre-check on purpose: filtering_proxy.py pulls the 75 MB blob
+    # itself through distillation.py and caches it under data/, so a check here
+    # would only be a second place to update when that path changes. Expect the
+    # download on a first run.
     _data_run_datagen "filtering_proxy.py"
     _data_require "data/sft/train.parquet" "data/sft/test.parquet"
     _data_log "SFT data ready."
