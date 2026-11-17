@@ -124,6 +124,26 @@ any of these in the name of upstream parity:
 The 90/10 split still samples the *train* side with seed 42, matching upstream
 for a given seed. Current output: 15599 traces kept, 2.57% proxy-only.
 
+## Tests
+
+`uv run pytest` is offline and needs no data files: the traces download is
+tested against a fake `urlopen`, and the dataset formats against a handful of
+synthetic traces built by `tests/conftest.py`. Two markers are deselected by
+default (`addopts` in `pyproject.toml`) because they need the real 75 MB blob:
+`-m slow` checks a cached traces file against `TRACES_SHA256` /
+`TRACES_NUM_BYTES` / `TRACES_NUM_RECORDS`, `-m network` re-downloads it.
+
+`pythonpath = ["datagen"]` is what lets the tests use the same flat imports the
+scripts do. Tests that write datasets monkeypatch `paths.DATA_DIR` through the
+`data_dir` fixture, so nothing lands in the real `data/`.
+
+The format tests read the contract out of the launch scripts rather than
+restating it — `configs/sft/*.sh` for the `extra_info` dict keys and the parquet
+paths, `configs/rlvr/*.sh` plus the reward manager's source for
+`reward_model.ground_truth` and the `@register` name. Renaming a key on either
+side fails a test instead of failing on a GPU. The reward manager is checked at
+source level on purpose: importing it needs verl and torch.
+
 ## Reward signals
 
 `countdown_code.reward_fns` provides the two signals the study depends on:

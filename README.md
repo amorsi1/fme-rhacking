@@ -25,6 +25,21 @@ uv sync --extra gpu   # adds verl for GPU training (Linux only)
 Upstream's `setup.sh` is not used; its dependencies are declared in
 `pyproject.toml`.
 
+## Tests
+
+```bash
+uv run pytest             # offline unit tests, no data files needed
+uv run pytest -m slow     # also verify an already-cached traces file
+uv run pytest -m network  # also re-download the 75 MB traces and check the pin
+```
+
+`tests/` covers the traces download (caching, checksum, atomic rename) and the
+dataset formats the training scripts consume — the SFT `extra_info` struct is
+checked against the `prompt_dict_keys`/`response_dict_keys` actually written in
+`configs/sft/*.sh`, and the RLVR `reward_model.ground_truth` against the keys
+the verl reward manager indexes. The two markers are deselected by default
+because both need the full traces blob.
+
 ## Layout
 
 | Path | Contents |
