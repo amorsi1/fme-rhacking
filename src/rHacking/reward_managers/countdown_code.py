@@ -3,13 +3,15 @@
 # Upstream ships no LICENSE file; used here for internal research under the
 # original authors' copyright. See CLAUDE.md for local modifications.
 
+import dataclasses
 import sys
 import subprocess
-import json
 import re
 import asyncio
+import numpy as np
 import torch
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Dict, List, Optional
 
@@ -18,31 +20,13 @@ from verl.workers.reward_manager import register
 from verl.workers.reward_manager.abstract import AbstractRewardManager
 from transformers import PreTrainedTokenizer
 
-def load_json_from_response(text: str) -> Optional[Dict[str, str]]:
-    # Look for json after the think block
-    match = re.search(r"</think>\s*({.*})\s*$", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-            
-    # Fallback: look for the last valid json object
-    match_any = re.search(r"({[^{}]*\{[^{}]*\}[^{}]*}|{.*})", text, re.DOTALL)
-    if match_any:
-        try:
-            return json.loads(match_any.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    return None
-
-def clean_code(code: str) -> str:
-    # Use with caution: robust extraction is better than unicode_escape if possible,
-    # but strictly following your logic here.
-    try:
-        return code.encode().decode('unicode_escape')
-    except Exception:
-        return code
+from countdown_code.parsing import (
+    load_json_from_response,
+    clean_code,
+    test_mentions_expr,
+    test_prints_bare_true,
+    test_defines_verify_solution,
+)
 
 def _run_test_job(response: str, timeout: int = 2) -> float:
     """
