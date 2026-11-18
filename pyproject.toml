@@ -39,7 +39,11 @@ dependencies = [
 # Note: verl is not on PyPI; uv resolves it from the git source below.
 # If resolution fails due to a torch/transformers version conflict, add
 # overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
-gpu = ["verl; sys_platform == 'linux'"]
+gpu = [
+    "verl; sys_platform == 'linux'",
+    "nvidia-ml-py; sys_platform == 'linux'",
+    "psutil; sys_platform == 'linux'",
+]
 
 [dependency-groups]
 # Test-only. `uv sync` installs these by default; `uv sync --no-dev` skips them.
