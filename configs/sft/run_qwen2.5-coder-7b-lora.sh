@@ -54,7 +54,8 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
     trainer.default_local_dir=$save_path \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.logger=console \
+    trainer.logger='["console","wandb"]' \
+    trainer.test_freq=20 \
     trainer.total_epochs=5 \
     model.lora_rank=128 \
     model.lora_alpha=128 \

@@ -21,7 +21,7 @@ TRAIN_PATH="${PROJECT_DIR}/data/sft/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/sft/test.parquet"
 
 MODEL_PATH="Qwen/Qwen2.5-Coder-3B-Instruct"
-EXPERIMENT_NAME="sft_qwen25_coder_7b_orig"
+EXPERIMENT_NAME="sft_qwen25_coder_3b_orig"
 
 if [ "$#" -lt 2 ]; then
     echo "Usage: run_qwen2.5-coder-3b-lora.sh <nproc_per_node> <save_path> [other_configs...]"
@@ -54,7 +54,8 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
     trainer.default_local_dir=$save_path \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.logger=console \
+    trainer.logger='["console","wandb"]' \
+    trainer.test_freq=20 \
     trainer.total_epochs=5 \
     model.strategy=fsdp \
     ulysses_sequence_parallel_size=2 \

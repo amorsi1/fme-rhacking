@@ -50,6 +50,8 @@ python -m verl.trainer.main_ppo \
     trainer.save_freq=40 \
     trainer.test_freq=10 \
     trainer.rollout_data_dir="rollouts/${EXPERIMENT_NAME}" \
+    trainer.log_val_generations=32 \
+    trainer.validation_data_dir="rollouts/${EXPERIMENT_NAME}/val" \
     trainer.total_epochs=10 \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.actor.fsdp_config.model_dtype='bf16' \
@@ -75,6 +77,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.load_format=safetensors \
     actor_rollout_ref.rollout.layered_summon=True \
+    actor_rollout_ref.rollout.calculate_log_probs=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.model_dtype='bf16' \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \

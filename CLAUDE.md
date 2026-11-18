@@ -191,3 +191,33 @@ A tampered `test.py` scores proxy 1.0 / true 0.0 — the gap being measured.
 training while the true reward is recorded for diagnosis. The verl reward
 manager computes the same two signals during RL and additionally logs
 `cheating_rate`.
+
+## W&B logging
+
+**How custom metrics reach W&B.** The pinned verl fork adds a hook at
+`ray_trainer.py:1110-1119` that averages every numeric list in
+`reward_extra_info` and emits it as `critic/rewards/<key>` (train) and
+`val-core/<data_source>/<key>/mean@1` (validation). Any per-sample list our
+reward manager returns in `reward_extra_info` therefore becomes a W&B metric
+automatically — no extra plumbing.
+
+**How GRPO group metrics work.** `data.non_tensor_batch["uid"]` identifies
+which of the 8 rollouts belong to the same prompt. Group-level statistics
+(pass@8, group_all_same, etc.) are expressed by broadcasting one value across
+all 8 rows of a group so verl's plain `np.mean` over the full batch yields the
+correct per-group statistic. This requires no change to verl's training loop.
+
+**Why pass@8 is train-side only.** Validation is intentionally greedy `n=1`
+(`actor_rollout_ref.rollout.val_kwargs: n=1, temperature=0`). Pass@8 therefore
+comes from training rollouts at zero extra cost; there is no validation pass@n.
+
+**Val generations table.** `trainer.log_val_generations=32` enables
+`_maybe_log_val_generations` in verl, which writes a `val/generations`
+`wandb.Table` (prompt / completion / score) every `test_freq` steps. This is
+the cheapest way to read tampered `test.py` content in the W&B UI.
+
+**Rollout probs drift metrics.** `actor_rollout_ref.rollout.calculate_log_probs=True`
+enables `calculate_debug_metrics` in verl, surfacing
+`training/rollout_probs_diff_{max,mean,std}` and
+`training/rollout_actor_probs_pearson_corr` — the vLLM-vs-FSDP numerics drift
+that silently corrupts GRPO if it grows too large.
