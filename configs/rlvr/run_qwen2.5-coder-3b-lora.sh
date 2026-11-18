@@ -9,7 +9,16 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
-PROJECT_NAME="verl_reasoning_safety"
+# Load WANDB_API_KEY and other secrets if a .env file is present.
+# set -a exports every assignment; set +a restores normal behaviour.
+# Suppress set -x tracing while loading secrets so they never appear in logs.
+{ set +x; } 2>/dev/null
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a; source "${PROJECT_DIR}/.env"; set +a
+fi
+set -x
+
+PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/rlvr/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/rlvr/test.parquet"
 
@@ -43,6 +52,8 @@ python -m verl.trainer.main_ppo \
     trainer.save_freq=40 \
     trainer.test_freq=10 \
     trainer.rollout_data_dir="rollouts/${EXPERIMENT_NAME}" \
+    trainer.log_val_generations=32 \
+    trainer.validation_data_dir="rollouts/${EXPERIMENT_NAME}/val" \
     trainer.total_epochs=10 \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.actor.fsdp_config.model_dtype='bf16' \
@@ -68,6 +79,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.load_format=safetensors \
     actor_rollout_ref.rollout.layered_summon=True \
+    actor_rollout_ref.rollout.calculate_log_probs=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.model_dtype='bf16' \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
