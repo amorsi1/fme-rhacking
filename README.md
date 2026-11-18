@@ -196,10 +196,10 @@ Then RLVR:
 bash configs/rlvr/run_qwen2.5-coder-3b-fft.sh     # or the 7b-lora variant
 ```
 
-The RLVR scripts register our reward manager with unmodified verl by pointing
-`custom_reward_function.path` at `src/rHacking/reward_managers/countdown_code.py`;
-`CLAUDE.md` explains the mechanism. If a run dies with
-`Unknown reward manager: countdown_code`, that hook is the thing to look at.
+The RLVR scripts load `src/rHacking/reward_managers/countdown_code.py` via
+`custom_reward_function.path` and select the registered manager
+`rhacking_countdown_code`. The pinned verl fork uses `countdown_code` for its
+own manager. See `AGENTS.md` for the loader details.
 
 ### Training data is generated on demand
 
