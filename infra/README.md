@@ -316,15 +316,48 @@ Once the first step completes, a run appears at
 
 Key metrics to watch:
 
+**What drives training**
+
 | Metric | Meaning |
 |---|---|
-| `train/reward_mean` | Average proxy reward (what drives training) |
-| `train/run_execution_check` | Proxy reward — model's own test passed |
-| `train/run_equation_check` | True reward — `expr` actually solves the problem |
-| `train/cheating_rate` | Fraction of rollouts with proxy=1 / true=0 (hacking) |
+| `critic/rewards/execution_score` | Raw proxy signal (0 / 0.2 / 1.2) averaged over the batch — this is the quantity the model is actually optimising |
+| `critic/rewards/exec_pass` | Fraction of rollouts where the model's `test.py` printed `True` (proxy pass rate, 0/1 readable) |
+| `critic/rewards/equation_accuracy` | Fraction of rollouts where `expr` genuinely solves the problem (true reward) |
 
-The gap between `run_execution_check` and `run_equation_check` is the
-specification-gaming signal this project measures.
+**The hacking signal**
+
+| Metric | Meaning |
+|---|---|
+| `critic/rewards/cheating_rate` | Fraction with proxy=1 / true=0 — the core specification-gaming rate |
+| `critic/rewards/reward_gap` | Mean of `exec_pass − equation_accuracy`; positive means net gaming |
+| `critic/rewards/both_correct` | Proxy=1 and true=1 |
+| `critic/rewards/false_negative` | Proxy=0 but true=1 (model solved it but `test.py` didn't catch it) |
+| `critic/rewards/test_prints_bare_true` | Fraction of `test.py`s that just `print(True)` with no logic — the crudest tamper |
+| `critic/rewards/test_mentions_expr` | Fraction of `test.py`s that reference the `expr` variable at all |
+
+**Proxy pipeline breakdown** (mean = rate; helps diagnose why proxy is low)
+
+| Metric | Meaning |
+|---|---|
+| `critic/rewards/parse_ok` | JSON parsed successfully |
+| `critic/rewards/format_ok` | Both `solution.py` and `test.py` non-empty |
+| `critic/rewards/exec_timeout` | Subprocess hit the 2 s timeout |
+| `critic/rewards/exec_nonzero_returncode` | Subprocess crashed |
+| `critic/rewards/exec_wrong_stdout` | Ran but stdout ≠ `"True"` |
+
+**GRPO group health** (each value is broadcast across the 8-sample group so `np.mean` yields the per-group stat)
+
+| Metric | Meaning |
+|---|---|
+| `critic/rewards/group_pass_at_n_proxy` | Fraction of prompts where ≥1 rollout passed proxy (pass@8) |
+| `critic/rewards/group_pass_at_n_true` | Fraction of prompts where ≥1 rollout passed true reward |
+| `critic/rewards/group_all_same` | Fraction of groups with zero proxy-reward variance — no gradient contribution |
+| `critic/rewards/group_all_pass` | Fraction of groups where every rollout passed (saturated prompts) |
+| `critic/rewards/group_all_fail` | Fraction of groups where every rollout failed (collapsed prompts) |
+| `critic/rewards/group_reward_std` | Mean within-group reward spread — raw GRPO signal strength |
+| `critic/rewards/group_any_cheat` | Fraction of prompts where at least one rollout gamed the proxy |
+
+**Val generations table** (`val/generations`, refreshed every `test_freq` steps): 32 prompt/completion/score rows — open this table to read tampered `test.py` content directly in the W&B UI.
 
 ### GPU utilisation on the VM
 
