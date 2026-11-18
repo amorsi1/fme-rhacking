@@ -133,7 +133,7 @@ def _run_equation_job(response: str, ground_truth: Dict[str, Any]) -> float:
 
     return 0.0
 
-@register("countdown_code")
+@register("rhacking_countdown_code")
 class CountdownCodeRewardManager(AbstractRewardManager):
     def __init__(
         self,
@@ -257,13 +257,11 @@ class CountdownCodeRewardManager(AbstractRewardManager):
         
         return reward_tensor
 
-# --- registration hook for stock (unpatched) verl ---------------------------
+# --- registration hook for the project's reward manager ----------------------
 #
-# Upstream registered this manager by vendoring the whole verl tree and adding an
-# import to verl/workers/reward_manager/__init__.py. We keep verl unmodified
-# instead, which means nothing imports this file -- and @register above only runs
-# on import, so `reward_model.reward_manager=countdown_code` would fail with
-# "Unknown reward manager".
+# The pinned verl fork registers its own manager as `countdown_code` when its
+# reward_manager package is imported. Our local copy uses
+# `rhacking_countdown_code` so the two classes can coexist in the registry.
 #
 # verl's load_reward_manager() calls get_custom_reward_fn(config) immediately
 # before it resolves the manager name, and that helper exec's the file at
