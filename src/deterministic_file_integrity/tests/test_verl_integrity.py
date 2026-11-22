@@ -22,7 +22,7 @@ def test_train_and_validation_reward_managers(pytestconfig):
     repo_root = pytestconfig.rootpath
     config = OmegaConf.create({
         "data": {"reward_fn_key": "data_source"},
-        "reward_model": {"reward_manager": "fme_countdown_code", "reward_kwargs": {"enforce_file_integrity": True}},
+        "reward_model": {"reward_manager": "rhacking_countdown_code", "reward_kwargs": {"enforce_file_integrity": True}},
         "custom_reward_function": {"path": str(repo_root / "src/rHacking/reward_managers/countdown_code.py"),
                                    "name": "unused_compute_score"},
     })

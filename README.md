@@ -202,8 +202,10 @@ Then RLVR:
 bash configs/rlvr/run_qwen2.5-coder-3b-fft.sh     # or the 7b-lora variant
 ```
 
-The RLVR scripts register `fme_countdown_code` through
-`custom_reward_function.path`. The pinned verl already owns `countdown_code`.
+The RLVR scripts load `src/rHacking/reward_managers/countdown_code.py` via
+`custom_reward_function.path` and select the registered manager
+`rhacking_countdown_code`. The pinned verl fork uses `countdown_code` for its
+own manager. See `AGENTS.md` for the loader details.
 
 ### Deterministic file integrity
 

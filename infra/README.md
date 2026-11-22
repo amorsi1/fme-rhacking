@@ -463,7 +463,7 @@ this automatically; if you SSHed in manually just wait:
 watch -n5 nvidia-smi
 ```
 
-### `Unknown reward manager: fme_countdown_code`
+### `Unknown reward manager: rhacking_countdown_code`
 
 The verl reward manager registration failed.  The most likely cause is that
 `custom_reward_function.path` in the config does not resolve to an existing

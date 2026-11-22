@@ -195,12 +195,12 @@ def test_rlvr_configs_register_the_reward_manager_that_exists(
     source = manager_path.read_text()
     registered = re.search(r"@register\(\"([^\"]+)\"\)", source)
     assert registered is not None
-    assert registered.group(1) == "fme_countdown_code"  # The pinned verl owns "countdown_code".
+    # Pinned verl registers its own manager under "countdown_code" at import.
+    assert registered.group(1) == "rhacking_countdown_code"
 
     for config in rlvr_configs(repo_root):
         text = config.read_text()
-        # The by-path exec is the only thing that runs @register in the Ray
-        # worker; a stale path fails as "Unknown reward manager".
+        # The by-path exec registers the project's manager in the Ray worker.
         path = hydra_override(text, "custom_reward_function.path")
         assert path == f'"${{PROJECT_DIR}}/{REWARD_MANAGER_RELPATH}"', config.name
         assert manager_path.is_file()

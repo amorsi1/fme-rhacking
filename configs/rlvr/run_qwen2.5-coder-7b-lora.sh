@@ -82,7 +82,7 @@ python -m verl.trainer.main_ppo \
     reward_model.enable=False \
     custom_reward_function.path="${PROJECT_DIR}/src/rHacking/reward_managers/countdown_code.py" \
     custom_reward_function.name=unused_compute_score \
-    reward_model.reward_manager='fme_countdown_code' \
+    reward_model.reward_manager='rhacking_countdown_code' \
     actor_rollout_ref.model.lora_rank=128 \
     actor_rollout_ref.model.lora_alpha=128 \
     "$@"

@@ -16,7 +16,7 @@ from verl.workers.reward_manager.abstract import AbstractRewardManager
 from rHacking.scoring import score_rollout
 
 
-@register("fme_countdown_code")
+@register("rhacking_countdown_code")
 class CountdownCodeRewardManager(AbstractRewardManager):
     def __init__(
         self,

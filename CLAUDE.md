@@ -51,31 +51,26 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
 
 ## verl reward manager registration
 
-Upstream vendored all 8.8 MB of verl to carry two files: the reward manager and
-a one-line import of it in `verl/workers/reward_manager/__init__.py`. We keep
-verl unmodified and register from outside instead.
+The pinned Countdown-Code fork of verl imports its own manager under
+`countdown_code` during package initialization. The RLVR configs select our
+tracked implementation via the distinct registry key `rhacking_countdown_code`.
+Using the upstream key in our decorator caused verl to reject the second class
+during Ray worker startup.
 
-The registry is a plain dict filled by `@register(...)` at import time, and the
-lookup happens inside a `@ray.remote` `TaskRunner`, so importing on the driver
-would not help. `load_reward_manager()` calls `get_custom_reward_fn(config)`
-immediately before resolving the name, and that helper `exec`s the file at
-`custom_reward_function.path` **in that same worker** — so pointing it at our
-module runs `@register` exactly where it is needed. The RLVR configs do this.
+`load_reward_manager()` calls `get_custom_reward_fn(config)` before looking up the
+manager. That helper imports the file at `custom_reward_function.path` as
+`custom_module` inside the Ray worker, where the decorator registers our class.
+The helper requires a callable name, so the configs specify
+`unused_compute_score`. Our manager ignores this callback. It raises if called
+so a future change to verl's loading path surfaces the behavior change.
 
-The helper also requires a function name to `getattr`, hence
-`unused_compute_score`. `CountdownCodeRewardManager` ignores the `compute_score`
-it is handed, so the value is never used; it raises instead of returning 0.0 so
-a verl change that started calling it fails loudly rather than silently zeroing
-rewards.
+Keep `src/rHacking/reward_managers/__init__.py` free of imports of
+`.countdown_code`. A normal package import and the by-path load would create
+two class objects and collide under the project key.
 
-`src/rHacking/reward_managers/__init__.py` deliberately does **not** import
-`.countdown_code`: verl loads it by path as `custom_module`, and a second import
-as a package module would run `@register` on a different class object, which the
-registry rejects with `ValueError`.
-
-The pinned verl already registers its own `countdown_code`. The project registers
-`fme_countdown_code`. With the verl stack installed, `src/deterministic_file_integrity/tests/test_verl_integrity.py`
-loads the project manager by path and checks training and validation reward tensors.
+With the verl stack installed,
+`src/deterministic_file_integrity/tests/test_verl_integrity.py` loads the
+project manager by path and checks training and validation reward tensors.
 
 ## Data layout
 
