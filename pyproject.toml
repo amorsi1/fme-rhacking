@@ -76,7 +76,10 @@ markers = [
 # surrounding stack (torch 2.8, vllm 0.11, transformers 4.x) is numpy-2 clean,
 # so overriding verl's cap is narrower than pinning datasets and pyarrow back
 # to their numpy-1 era releases.
-override-dependencies = ["numpy>=2.0"]
+# The override REPLACES every package's numpy requirement, so it must carry the
+# upper bound too: numba (pulled in by vllm's ngram spec-decode) needs numpy
+# <2.3 and raises ImportError at vllm engine init otherwise.
+override-dependencies = ["numpy>=2.0,<2.3"]
 
 [tool.uv.sources]
 # verl lives in a subdirectory of the upstream Countdown-Code repo. Pinned to
