@@ -296,18 +296,26 @@ bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh \
 
 ## 6. Monitoring a run
 
-### Attach to the live log
+### Follow the live log (no SSH)
 
-Training runs inside a `tmux` session called `training`.  Attach from anywhere:
+`train.sh` starts a sidecar on the VM that copies the training log to GCS every
+30 seconds.  On your Mac, follow it in real time with:
 
 ```bash
-gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap -- -t tmux attach -t training
+bash infra/watch_log.sh
 ```
 
-Detach without killing the job: press **Ctrl-b d**.
+The script polls `gs://$GCP_BUCKET/logs/live.log` using byte-range reads
+(only new bytes are downloaded each cycle) and streams output to stdout.
+Expect up to 30 s of lag.  Stop with **Ctrl-C**.
 
-The log is also written to `logs/training_<timestamp>.log` on the VM; `fetch.sh`
-pulls it back.
+The log file is also written to `logs/training_<timestamp>.log` on the VM and
+pulled back by `fetch.sh` after the run completes.
+
+> **Why not `tmux attach`?**  The VM has no external IP (org policy), so
+> interactive SSH sessions routed through IAP get rejected.  The GCS-based
+> watcher requires no open tunnel — only GCS read access, which you already
+> have from your `gcloud auth application-default login`.
 
 ### W&B dashboard
 
@@ -328,10 +336,18 @@ specification-gaming signal this project measures.
 
 ### GPU utilisation on the VM
 
+GPU metrics are exposed automatically via W&B — look for `gpu_util` and
+`gpu_memory_used` on the run page.
+
+If you need raw `nvidia-smi` output and your IAP tunnel is working, you can run:
+
 ```bash
 gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- watch -n2 nvidia-smi
 ```
+
+IAP interactive SSH is unreliable in this setup (see note above); prefer W&B for
+GPU monitoring.
 
 ---
 
