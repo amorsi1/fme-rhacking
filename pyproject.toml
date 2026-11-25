@@ -46,7 +46,22 @@ dependencies = [
 # Note: verl is not on PyPI; uv resolves it from the git source below.
 # If resolution fails due to a torch/transformers version conflict, add
 # overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
-gpu = ["verl; sys_platform == 'linux'"]
+# verl[gpu] is verl's own GPU extra (liger-kernel + flash-attn). The configs set
+# actor_rollout_ref.model.use_liger=True and transformers requests
+# attn_implementation=flash_attention_2, and model construction raises
+# ImportError / ModuleNotFoundError without them.
+# flash-attn is ALSO listed directly: [tool.uv.sources] only applies to a
+# project's direct dependencies, so without this line the transitive dependency
+# from verl[gpu] resolves to the PyPI sdist, which fails to build (no torch in
+# the isolated build env) and would take tens of minutes to compile anyway.
+# liger-kernel is capped below 0.8.5: that release raises ImportError at import
+# unless transformers >= 5.0, but we cap transformers below 5 (see vllm pin). 0.8.1-0.8.4
+# accept transformers >= 4.52. Lift the cap only together with transformers.
+gpu = [
+    "verl[gpu]; sys_platform == 'linux'",
+    "flash-attn; sys_platform == 'linux'",
+    "liger-kernel<0.8.5; sys_platform == 'linux'",
+]
 
 [dependency-groups]
 # Test-only. `uv sync` installs these by default; `uv sync --no-dev` skips them.
@@ -86,6 +101,12 @@ override-dependencies = ["numpy>=2.0,<2.3"]
 # the same commit our vendored copies came from (170ee81) to keep the verl
 # version consistent with the rest of the codebase.
 verl = { git = "https://github.com/zohaib-khan5040/Countdown-Code", rev = "170ee8139cd836d6ab7b7b3a70c2063906363db0", subdirectory = "verl/verl" }
+# flash-attn publishes no PyPI wheels, and its sdist compiles CUDA kernels for
+# tens of minutes. The wheel below is ABI-specific, so it must match the locked
+# stack: torch 2.8.0 (pinned by vllm 0.11.0) built for CUDA 12.x, CXX11 ABI on,
+# CPython 3.12. Bumping torch, vllm or Python means picking a new wheel from
+# https://github.com/Dao-AILab/flash-attention/releases.
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux'" }
 
 [build-system]
 requires = ["hatchling"]
