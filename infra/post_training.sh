@@ -24,5 +24,9 @@ for dir in checkpoints rollouts logs; do
 done
 
 log "==> GCS sync complete."
-log "    Shutting down VM in 60 s.  To cancel: sudo shutdown -c"
-sudo shutdown -h +1
+if [[ "${NO_SHUTDOWN:-0}" == "1" ]]; then
+    log "    NO_SHUTDOWN=1 — skipping shutdown."
+else
+    log "    Shutting down VM in 60 s.  To cancel: sudo shutdown -c"
+    sudo shutdown -h +1
+fi

@@ -282,6 +282,20 @@ SFT scripts take two positional arguments: `nproc_per_node` and `save_path`.
 bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 ```
 
+### Keeping the VM alive after training
+
+By default the VM shuts down once training finishes. Pass `--no-shutdown` as
+the first argument to skip the shutdown while still syncing outputs to GCS:
+
+```bash
+bash infra/train.sh --no-shutdown configs/rlvr/run_qwen2.5-coder-3b-lora.sh
+```
+
+Useful when you want to SSH in immediately after a run to inspect state,
+run a quick eval, or launch a follow-up job without re-provisioning.
+Remember to stop the VM manually when done (`bash infra/stop.sh`), or it
+will keep accruing charges.
+
 ### Passing extra verl arguments
 
 Any arguments after the config path are forwarded directly to verl:
@@ -435,7 +449,8 @@ bash infra/sync.sh   # re-sync in case you made local changes
 
 GPU VMs accrue charges every minute they are **running**.  Normally you do not
 need to stop the VM manually — it shuts itself down at the end of every training
-run (see [§5](#5-day-to-day-workflow)).
+run (see [§5](#5-day-to-day-workflow)).  If you launched with `--no-shutdown`,
+the VM stays running after training; remember to stop it with `bash infra/stop.sh`.
 
 If you need to stop it early (e.g., to abort a run), SSH in and cancel the
 pending shutdown first so the GCS sync can run:

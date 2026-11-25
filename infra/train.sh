@@ -11,10 +11,11 @@
 # To kill it early: kill $(cat logs/fetch_watcher.pid)
 #
 # Usage:
-#   bash infra/train.sh <config-script> [extra verl args]
+#   bash infra/train.sh [--no-shutdown] <config-script> [extra verl args]
 #
 # Examples:
 #   bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+#   bash infra/train.sh --no-shutdown configs/rlvr/run_qwen2.5-coder-3b-fft.sh
 #   bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 #   bash infra/train.sh configs/rlvr/run_qwen2.5-coder-7b-lora.sh
 #
@@ -25,7 +26,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
-CONFIG_SCRIPT="${1:?Usage: train.sh <config-script> [extra args]}"
+NO_SHUTDOWN=0
+if [[ "${1:-}" == "--no-shutdown" ]]; then
+    NO_SHUTDOWN=1
+    shift
+fi
+
+CONFIG_SCRIPT="${1:?Usage: train.sh [--no-shutdown] <config-script> [extra args]}"
 shift || true
 EXTRA_ARGS="${*:-}"
 
@@ -47,14 +54,18 @@ tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
      source ${REMOTE_DIR}/.venv/bin/activate && \
      bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
-     bash ${REMOTE_DIR}/infra/post_training.sh"
+     NO_SHUTDOWN=${NO_SHUTDOWN} bash ${REMOTE_DIR}/infra/post_training.sh"
 
 echo ""
 echo "Training started in tmux session '${SESSION}'."
 echo "Attach:  gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap -- -t tmux attach -t ${SESSION}"
 echo "Logs:    ${REMOTE_DIR}/logs/"
 echo ""
-echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
+if [[ "${NO_SHUTDOWN}" == "1" ]]; then
+    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} but will NOT shut down (--no-shutdown)."
+else
+    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
+fi
 REMOTE
 
 # Kill any stale watcher from a previous run.
