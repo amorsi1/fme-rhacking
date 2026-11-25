@@ -16,10 +16,17 @@ dependencies = [
     # Linux-only: vllm publishes manylinux wheels exclusively, so an unmarked
     # dependency makes the project unresolvable on macOS. The marker keeps one
     # cross-platform lockfile -- installed on the Linux/CUDA box where rollouts
-    # run, skipped on laptops. Pinned to upstream's locked version: an open bound
-    # floats to 0.33.x and drags transformers to 5.x, far past what this targets.
+    # run, skipped on laptops.
+    # Pinned to 0.11.0, the NEWEST vllm the pinned verl fork can import: verl's
+    # vllm_rollout_spmd.py does `from vllm.config import CompilationLevel`, which
+    # vllm renamed to CompilationMode in 0.11.2. Newer vllm fails at worker init
+    # (ImportError), after the model has loaded. Upstream itself trained on
+    # vllm 0.8.5 / torch 2.6. Moving past 0.11.0 means porting verl, not unpinning.
     # (verifiers constrains vllm too, but only under its unused `rl` extra.)
-    "vllm==0.13.0; sys_platform == 'linux'",
+    "vllm==0.11.0; sys_platform == 'linux'",
+    # vllm 0.11.0 allows transformers 5.x, which the verl fork and its upstream
+    # (transformers 4.5x) were never run against; liger-kernel 0.8.5 also needs 5.
+    "transformers>=4.57,<5; sys_platform == 'linux'",
     # datagen/
     "tqdm>=4.66.0",
     "pandas>=2.0.0",
@@ -66,7 +73,7 @@ markers = [
 # Without this override the resolver has to satisfy verl, settles on numpy
 # 1.26.4 for every platform, and `import pyarrow` then fails on the laptop with
 # "pyarrow requires NumPy 2.0 or newer" -- breaking all of datagen/. The
-# surrounding stack (torch 2.6+, vllm 0.13, transformers 4.x) is numpy-2 clean,
+# surrounding stack (torch 2.8, vllm 0.11, transformers 4.x) is numpy-2 clean,
 # so overriding verl's cap is narrower than pinning datasets and pyarrow back
 # to their numpy-1 era releases.
 override-dependencies = ["numpy>=2.0"]
