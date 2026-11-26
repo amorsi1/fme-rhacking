@@ -102,6 +102,7 @@ Open `.env` and set:
 | `GCP_BUCKET` | Globally unique bucket name, e.g. `yourname-fme-rhacking` | `gcloud storage buckets list --format='value(name)'` (empty before `provision.sh` runs) |
 | `GCP_REMOTE_DIR` | Path on the VM, e.g. `/home/YOUR_USERNAME/fme-rhacking` | `echo "/home/$USER/fme-rhacking"` (`gcloud compute ssh` logs in as your local username) |
 | `WANDB_API_KEY` | From [wandb.ai/settings](https://wandb.ai/settings) → Danger Zone → API keys | — |
+| `WANDB_BASE_URL` | The W&B **API** host, `https://api.forge.coreweave.com` (see `.env.example`). Not the UI host `forge.coreweave.com` — that fails W&B's URL validation at startup | — |
 | `WANDB_ENTITY` | Shared W&B team (`fme-team`) so everyone's runs are visible together | — |
 | `WANDB_PROJECT` | Shared W&B project; keep identical across the team (default `verl_reasoning_safety`) | — |
 | `OPENAI_API_KEY` | Only needed for distillation data generation | — |
@@ -208,10 +209,12 @@ are incremental and usually finish in under 10 seconds.
 
 ## 5. Day-to-day workflow
 
-**The VM manages its own lifecycle.** You push code, start training, and walk
-away.  When training finishes (or crashes), the VM automatically syncs all
-outputs to GCS and shuts itself down — no need to monitor it or remember to
-stop it.
+**The VM manages its own lifecycle when training succeeds.** You push code,
+start training, and walk away.  When training exits 0, the VM syncs all outputs
+to GCS and shuts itself down.  When it **fails**, the VM still syncs to GCS but
+**stays up** so you can debug — L4 capacity is scarce (`STOCKOUT`, see
+[§10](#10-troubleshooting)) and handing the VM back after a crash can cost hours
+to get it again.  A failed run therefore keeps billing until you stop it.
 
 ```
 [ laptop ]                                   [ GCP VM ]
@@ -221,10 +224,10 @@ bash infra/train.sh ...  -- start job  -->       | tmux: training
   └─ fetch_watcher.sh launched locally           | (runs unattended)
      (polls GCP every 2 min in background)       |
                                                  | training finishes
-[ close terminal / do other work ]               | --> sync to GCS
-                                                 | --> sudo shutdown
+[ close terminal / do other work ]               | --> sync to GCS (always)
+                                                 | --> sudo shutdown (only if exit 0)
                                              (VM TERMINATED, billing ends)
-  watcher detects TERMINATED
+  watcher detects TERMINATED                     (a failed run stays up instead)
   --> fetch.sh --from-gcs runs automatically
   --> outputs land in checkpoints/, rollouts/, logs/
 ```
@@ -237,9 +240,16 @@ bash infra/train.sh ...  -- start job  -->       | tmux: training
 
 **What happens automatically:**
 
-- On the VM: when training exits (any exit code), `post_training.sh` syncs
-  `checkpoints/`, `rollouts/`, and `logs/` to `gs://$GCP_BUCKET`, then issues
-  `sudo shutdown -h +1` (60-second grace period).
+- On the VM, before launch: `train.sh` kills the previous tmux session and any
+  leftover `ray::` workers (they survive `ray stop --force` and keep GPU memory,
+  which makes the next run OOM spuriously) and prints the GPU's compute apps, so
+  a dirty GPU is visible in the launch output.  Inside tmux it sources
+  `infra/vm_env.sh`, which scrubs the image's NCCL env (see §10).
+- On the VM, after training: `post_training.sh` always syncs `checkpoints/`,
+  `rollouts/`, and `logs/` to `gs://$GCP_BUCKET`.  It then issues
+  `sudo shutdown -h +1` (60-second grace period) **only if training exited 0**
+  — `train.sh` passes the exit code through `TRAIN_EXIT` (the tmux command sets
+  `pipefail`, otherwise `tee` would mask a crash).
 - On your Mac: `train.sh` starts `fetch_watcher.sh` as a background process.
   It polls GCP every 2 minutes; once the VM reaches `TERMINATED`, it runs
   `fetch.sh --from-gcs` and pulls everything to your local repo.
@@ -284,7 +294,7 @@ bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 
 ### Keeping the VM alive after training
 
-By default the VM shuts down once training finishes. Pass `--no-shutdown` as
+By default the VM shuts down once training finishes successfully. Pass `--no-shutdown` as
 the first argument to skip the shutdown while still syncing outputs to GCS:
 
 ```bash
@@ -326,7 +336,9 @@ pulls it back.
 ### W&B dashboard
 
 Once the first step completes, a run appears at
-`<WANDB_BASE_URL>/<WANDB_ENTITY>/<WANDB_PROJECT>`.
+`https://forge.coreweave.com/wandb/<WANDB_ENTITY>/<project>` (the UI host; the
+`WANDB_BASE_URL` in `.env` is the API host and is not the page you browse).
+`train.sh` runs print the exact link at the end of the log.
 
 Key metrics to watch:
 
@@ -371,6 +383,13 @@ Key metrics to watch:
 | `critic/rewards/group_reward_std` | Mean within-group reward spread — raw GRPO signal strength |
 | `critic/rewards/group_any_cheat` | Fraction of prompts where at least one rollout gamed the proxy |
 
+**Validation metrics** are greedy `n=1`: `val-core/local_jsonl/reward/mean@1` is
+the headline number and `val-aux/local_jsonl/*` carries the per-signal metrics.
+The `val-aux/.../group_*` entries are degenerate at `n=1` (`group_all_same` is
+always 1, `group_reward_std` always 0) — ignore them; pass@8 is a train-side
+metric. A one-step smoke run (`trainer.total_training_steps=1`) logs every
+metric above plus `training/rollout_probs_diff_*`.
+
 **Val generations table** (`val/generations`, refreshed every `test_freq` steps): 32 prompt/completion/score rows — open this table to read tampered `test.py` content directly in the W&B UI.
 
 ### GPU utilisation on the VM
@@ -399,6 +418,19 @@ Pulls three directories from GCS into the repo root:
 | `checkpoints/` | verl model checkpoints (one per `save_freq` steps) |
 | `rollouts/` | Per-step rollout parquet files |
 | `logs/` | Training stdout/stderr + `post_training.log` (sync status) |
+
+> **Known issues with `fetch.sh --from-gcs`:** it runs under `set -e`, so it
+> aborts if any of `checkpoints/`, `rollouts/`, `logs/` is missing from the
+> bucket, and `gsutil -m` hangs on macOS.  The local `fetch_watcher.sh` calls
+> it, so it can fail after a shutdown.  Until that is fixed, pull by hand:
+>
+> ```bash
+> for d in checkpoints rollouts logs; do
+>     gcloud storage rsync -r "gs://${GCP_BUCKET}/${d}" "${d}"
+> done
+> ```
+>
+> Checkpoints are large (one LoRA rank-64 3B checkpoint is ~7.7 GB).
 
 ### While training is still running (VM live)
 
@@ -448,9 +480,11 @@ bash infra/sync.sh   # re-sync in case you made local changes
 ## 9. Cost control
 
 GPU VMs accrue charges every minute they are **running**.  Normally you do not
-need to stop the VM manually — it shuts itself down at the end of every training
-run (see [§5](#5-day-to-day-workflow)).  If you launched with `--no-shutdown`,
-the VM stays running after training; remember to stop it with `bash infra/stop.sh`.
+need to stop the VM manually after a *successful* run — it shuts itself down
+(see [§5](#5-day-to-day-workflow)).  The VM stays running after a **failed** run
+and after anything launched with `--no-shutdown`; stop it yourself with
+`bash infra/stop.sh` once you are done (a debug session left overnight bills
+all night).
 
 If you need to stop it early (e.g., to abort a run), SSH in and cancel the
 pending shutdown first so the GCS sync can run:
@@ -545,6 +579,60 @@ gcloud compute ssh ${GCP_INSTANCE} --zone=${GCP_ZONE} --tunnel-through-iap \
     -- "source ${GCP_REMOTE_DIR}/.env && echo WANDB_API_KEY is set: \${WANDB_API_KEY:+yes}"
 ```
 
+### Ray `ActorDiedError` at model init, with no traceback
+
+Symptom: `ray.exceptions.ActorDiedError ... WorkerDict`, the log stops at the
+FSDP `NO_SHARD` warning or an `nccl-shim ... mismatch recommended:
+NCCL_CUMEM_ENABLE=0` line, and neither `dmesg` nor the OOM killer says anything.
+
+Cause: the VM image's `/etc/profile.d/nccl_env.sh` exports A3 Ultra (H200/gIB)
+NCCL settings (`NCCL_NET=gIB`, an a3u tuner config, `LD_LIBRARY_PATH=/usr/local/gib/lib64`)
+to **login** shells.  `train.sh` pipes its script into `ssh`, which is a login
+shell, and tmux inherits it; on an L4 NCCL then dies bringing up the gIB plugin.
+`train.sh` already handles this by sourcing `infra/vm_env.sh` inside tmux.  If you
+launch by hand over a login shell (an interactive `ssh`, or `ssh host < script`),
+`source infra/vm_env.sh` first; `ssh host -- 'bash -s'` is non-login and unaffected.
+
+To check a run: `env | grep ^NCCL_` in the same shell should print nothing, and
+the dead worker's own log is in `/tmp/ray/session_latest/logs/worker-*.err`.
+
+### `STOCKOUT` when starting the VM
+
+`gcloud compute instances start` can fail with a `ZONE_RESOURCE_POOL_EXHAUSTED`
+/ `STOCKOUT` error: the zone has no free L4s.  Retrying every couple of minutes
+is the only fix (it took ~2 minutes to ~2 hours in practice):
+
+```bash
+until gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}; do sleep 120; done
+```
+
+This is why a failed run leaves the VM up instead of shutting down.
+
+### `Reauthentication failed. cannot prompt during non-interactive execution`
+
+Your `gcloud` login expired, so every `gcloud compute` call (including the ones
+inside `train.sh` and its watcher) fails.  Run `gcloud auth login` in a terminal
+(it needs a browser) and retry.
+
+### GPU OOM at vLLM sampler warm-up, or `Total available GPUs 1.0 < desired 2`
+
+Two different problems.  The `1.0 < desired 2` error means the config asks for
+2 GPUs on a 1-GPU VM: pass `trainer.n_gpus_per_node=1`.  An OOM during
+`sampler warm-up` on the first launch is usually a **leftover `ray::WorkerDict`
+from the previous run still holding ~20 GB**: check
+`nvidia-smi --query-compute-apps=pid,used_memory --format=csv` and
+`pkill -9 -f ray::`.  `train.sh` now does this before every launch; a manual
+launch must do it itself.  If the GPU was clean, lower the LoRA rank (see
+[§11](#11-vm-sizing-reference)).
+
+### W&B: `base_url ... validation error`
+
+`WANDB_BASE_URL` must be the **API** host (`https://api.forge.coreweave.com`),
+not `https://forge.coreweave.com`.  Fix `.env` and re-run `sync.sh`.  A
+`ConnectionResetError` traceback in `wandb ... teardown_atexit` *after* the
+`wandb: Synced N W&B file(s)` lines is harmless shutdown noise; the run is
+already uploaded.
+
 ### OOM during training
 
 Reduce micro-batch sizes in the config or switch to a machine with more VRAM.
@@ -563,12 +651,25 @@ Pass them as extra args to `train.sh`.
 
 | Use case | `GCP_MACHINE_TYPE` | GPUs | Total VRAM |
 |---|---|---|---|
+| 3B LoRA rank 64 (smoke-tested) | `g2-standard-8` | 1× L4 | 22 GB |
 | 3B FFT, 7B LoRA | `g2-standard-24` | 2× L4 | 48 GB |
 | 7B FFT | `a2-highgpu-2g` | 2× A100 40 GB | 80 GB |
 | 7B FFT (faster) | `a2-highgpu-4g` | 4× A100 40 GB | 160 GB |
 
 Change `GCP_MACHINE_TYPE` and `GCP_DISK_SIZE` in `.env`, then re-run
 `infra/provision.sh` (delete the old VM first if switching machine type).
+
+**Single L4 (`g2-standard-8`, 22 GB VRAM, 31 GB host RAM).** Set
+`trainer.n_gpus_per_node=1` (override or edit the config) — verl dies with
+`Total available GPUs 1.0 < desired 2` otherwise.  `run_qwen2.5-coder-3b-lora.sh`
+trains at `lora_rank=lora_alpha=64` with its defaults and no memory overrides
+(`ppo_micro_batch_size_per_gpu=4`, `gpu_memory_utilization=0.6`, ref-model
+param offload): GPU peaks ~18 GB, host RAM ~7 GB.  Rank 128 does **not** fit:
+without offload it OOMs the GPU at vLLM sampler warm-up; with actor/optimizer
+offload the colocated worker holds ~25 GB of the 31 GB host RAM and the node
+kills it at `update_actor`.  LoRA state scales ~1.9M params × rank (about
+12–16 B/param with grads and Adam), so memory is dominated by rank here, not by
+the frozen 3B weights.
 
 The verl config flag `trainer.n_gpus_per_node` must match the number of GPUs
 on the machine.  It defaults to `2` in all configs; override via extra args
