@@ -146,6 +146,13 @@ class CountdownCodeRewardManager(AbstractRewardManager):
         self.num_examine = num_examine
         # We don't bind a single compute_score because we run two distinct jobs now
 
+        try:
+            from rHacking.monitoring.gpu_metrics import GpuSampler, install_tracking_hook
+            _sampler = GpuSampler()
+            install_tracking_hook(_sampler)
+        except Exception:
+            pass
+
     async def parallel_compute_score(self, completions, ground_truths, num_processes=64):
         loop = asyncio.get_running_loop()
         
