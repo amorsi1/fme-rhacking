@@ -66,6 +66,20 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
   declaring no numpy dependency. Without the override the resolver satisfies
   verl on every platform and all of `datagen/` dies at `import pyarrow`.
 
+## Launching on the GCP VM
+
+- **Launch through `infra/train.sh`; it scrubs the VM's NCCL env.** The image's
+  `/etc/profile.d/nccl_env.sh` exports A3 Ultra (H200/gIB) NCCL settings to
+  *login* shells, and `train.sh` feeds ssh its script on stdin, which is one.
+  On the L4 they make the Ray `WorkerDict` die silently during FSDP init (no
+  traceback, no OOM; only an `nccl-shim ... mismatch` warning). `infra/vm_env.sh`
+  unsets `NCCL_*` and the gib `LD_LIBRARY_PATH` inside the tmux session. A
+  hand-rolled `ssh -- 'bash -s'` launch is non-login and never hits this.
+- **The VM stays up after a failed run.** `post_training.sh` syncs to GCS either
+  way but shuts down only when training exited 0 (`TRAIN_EXIT`).
+- Kill leftover `ray::` workers before relaunching (`train.sh` does); they hold
+  GPU memory and make the next run OOM spuriously.
+
 ## verl reward manager registration
 
 The pinned Countdown-Code fork of verl imports its own manager under
