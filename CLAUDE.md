@@ -75,8 +75,9 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
   traceback, no OOM; only an `nccl-shim ... mismatch` warning). `infra/vm_env.sh`
   unsets `NCCL_*` and the gib `LD_LIBRARY_PATH` inside the tmux session. A
   hand-rolled `ssh -- 'bash -s'` launch is non-login and never hits this.
-- **The VM stays up after a failed run.** `post_training.sh` syncs to GCS either
-  way but shuts down only when training exited 0 (`TRAIN_EXIT`).
+- **The VM shuts down after any run, success or failure.** `post_training.sh`
+  syncs to GCS and then shuts down. To keep the VM for debugging (e.g. a first
+  run on a new config, given L4 `STOCKOUT`s), pass `--no-shutdown` to `train.sh`.
 - Kill leftover `ray::` workers before relaunching (`train.sh` does); they hold
   GPU memory and make the next run OOM spuriously.
 

@@ -259,9 +259,6 @@ bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
 bash infra/fetch.sh               # pull checkpoints/, rollouts/, logs/
 bash infra/stop.sh                # stop VM to end GPU charges
 
-# After a successful run the VM shuts itself down; after a failed run it stays up
-# (so you keep the scarce L4) — stop it with infra/stop.sh when done debugging.
-
 # To run again after the VM has been stopped/terminated by stop.sh or auto-shutdown:
 gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}
 bash infra/sync.sh && bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh

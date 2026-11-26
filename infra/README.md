@@ -209,12 +209,11 @@ are incremental and usually finish in under 10 seconds.
 
 ## 5. Day-to-day workflow
 
-**The VM manages its own lifecycle when training succeeds.** You push code,
-start training, and walk away.  When training exits 0, the VM syncs all outputs
-to GCS and shuts itself down.  When it **fails**, the VM still syncs to GCS but
-**stays up** so you can debug — L4 capacity is scarce (`STOCKOUT`, see
-[§10](#10-troubleshooting)) and handing the VM back after a crash can cost hours
-to get it again.  A failed run therefore keeps billing until you stop it.
+**The VM manages its own lifecycle.** You push code, start training, and walk
+away.  When training finishes (or crashes), the VM automatically syncs all
+outputs to GCS and shuts itself down — no need to monitor it or remember to
+stop it.  L4 capacity is scarce (`STOCKOUT`, see [§10](#10-troubleshooting)), so
+when you expect to debug a run, launch with `--no-shutdown` to keep the VM.
 
 ```
 [ laptop ]                                   [ GCP VM ]
@@ -224,10 +223,10 @@ bash infra/train.sh ...  -- start job  -->       | tmux: training
   └─ fetch_watcher.sh launched locally           | (runs unattended)
      (polls GCP every 2 min in background)       |
                                                  | training finishes
-[ close terminal / do other work ]               | --> sync to GCS (always)
-                                                 | --> sudo shutdown (only if exit 0)
+[ close terminal / do other work ]               | --> sync to GCS
+                                                 | --> sudo shutdown
                                              (VM TERMINATED, billing ends)
-  watcher detects TERMINATED                     (a failed run stays up instead)
+  watcher detects TERMINATED
   --> fetch.sh --from-gcs runs automatically
   --> outputs land in checkpoints/, rollouts/, logs/
 ```
@@ -245,11 +244,9 @@ bash infra/train.sh ...  -- start job  -->       | tmux: training
   which makes the next run OOM spuriously) and prints the GPU's compute apps, so
   a dirty GPU is visible in the launch output.  Inside tmux it sources
   `infra/vm_env.sh`, which scrubs the image's NCCL env (see §10).
-- On the VM, after training: `post_training.sh` always syncs `checkpoints/`,
-  `rollouts/`, and `logs/` to `gs://$GCP_BUCKET`.  It then issues
-  `sudo shutdown -h +1` (60-second grace period) **only if training exited 0**
-  — `train.sh` passes the exit code through `TRAIN_EXIT` (the tmux command sets
-  `pipefail`, otherwise `tee` would mask a crash).
+- On the VM, after training: when it exits (any exit code), `post_training.sh`
+  syncs `checkpoints/`, `rollouts/`, and `logs/` to `gs://$GCP_BUCKET`, then
+  issues `sudo shutdown -h +1` (60-second grace period).
 - On your Mac: `train.sh` starts `fetch_watcher.sh` as a background process.
   It polls GCP every 2 minutes; once the VM reaches `TERMINATED`, it runs
   `fetch.sh --from-gcs` and pulls everything to your local repo.
@@ -294,7 +291,7 @@ bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 
 ### Keeping the VM alive after training
 
-By default the VM shuts down once training finishes successfully. Pass `--no-shutdown` as
+By default the VM shuts down once training finishes (or fails). Pass `--no-shutdown` as
 the first argument to skip the shutdown while still syncing outputs to GCS:
 
 ```bash
@@ -480,11 +477,10 @@ bash infra/sync.sh   # re-sync in case you made local changes
 ## 9. Cost control
 
 GPU VMs accrue charges every minute they are **running**.  Normally you do not
-need to stop the VM manually after a *successful* run — it shuts itself down
-(see [§5](#5-day-to-day-workflow)).  The VM stays running after a **failed** run
-and after anything launched with `--no-shutdown`; stop it yourself with
-`bash infra/stop.sh` once you are done (a debug session left overnight bills
-all night).
+need to stop the VM manually — it shuts itself down at the end of every
+training run (see [§5](#5-day-to-day-workflow)).  If you launched with
+`--no-shutdown`, the VM stays running after training; stop it yourself with
+`bash infra/stop.sh` (a debug session left overnight bills all night).
 
 If you need to stop it early (e.g., to abort a run), SSH in and cancel the
 pending shutdown first so the GCS sync can run:
@@ -606,7 +602,8 @@ is the only fix (it took ~2 minutes to ~2 hours in practice):
 until gcloud compute instances start ${GCP_INSTANCE} --zone=${GCP_ZONE}; do sleep 120; done
 ```
 
-This is why a failed run leaves the VM up instead of shutting down.
+Because a shutdown gives the VM back (and a restart can wait hours), launch
+with `--no-shutdown` when you expect to iterate on a run.
 
 ### `Reauthentication failed. cannot prompt during non-interactive execution`
 
