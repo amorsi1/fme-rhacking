@@ -61,6 +61,7 @@ mkdir -p logs
 tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
      source ${REMOTE_DIR}/.venv/bin/activate && \
+     source ${REMOTE_DIR}/infra/vm_env.sh && \
      set -o pipefail; \
      bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
      TRAIN_EXIT=\\\$? NO_SHUTDOWN=${NO_SHUTDOWN} bash ${REMOTE_DIR}/infra/post_training.sh"
