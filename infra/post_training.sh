@@ -1,7 +1,6 @@
 #!/bin/bash
 # Called automatically by train.sh on training exit (success or failure).
-# Syncs checkpoints, rollouts, and logs to GCS, then shuts down the VM — but only
-# when training succeeded (TRAIN_EXIT=0), so a failed run stays debuggable.
+# Syncs checkpoints, rollouts, and logs to GCS, then shuts down the VM.
 # Not meant to be run directly — it is invoked by train.sh inside tmux.
 set -euo pipefail
 
@@ -27,8 +26,6 @@ done
 log "==> GCS sync complete."
 if [[ "${NO_SHUTDOWN:-0}" == "1" ]]; then
     log "    NO_SHUTDOWN=1 — skipping shutdown."
-elif [[ "${TRAIN_EXIT:-0}" != "0" ]]; then
-    log "    Training exited ${TRAIN_EXIT} — leaving the VM up for debugging."
 else
     log "    Shutting down VM in 60 s.  To cancel: sudo shutdown -c"
     sudo shutdown -h +1

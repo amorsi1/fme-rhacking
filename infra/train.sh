@@ -2,10 +2,8 @@
 # Launch a training script on the VM inside a named tmux session.
 # Disconnect-safe: training keeps running after you close the terminal.
 #
-# When training finishes:
-#   On the VM:    outputs are synced to GCS (success or failure). The VM then
-#                 shuts down only if training exited 0, so a failed run leaves
-#                 the VM up to debug (capacity is scarce; don't give it back).
+# When training finishes (success or failure):
+#   On the VM:    outputs are synced to GCS, then the VM shuts down.
 #   On your Mac:  a background watcher (fetch_watcher.sh) detects the shutdown
 #                 and runs `fetch.sh --from-gcs` to pull results locally.
 #
@@ -62,9 +60,8 @@ tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
      source ${REMOTE_DIR}/.venv/bin/activate && \
      source ${REMOTE_DIR}/infra/vm_env.sh && \
-     set -o pipefail; \
      bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
-     TRAIN_EXIT=\\\$? NO_SHUTDOWN=${NO_SHUTDOWN} bash ${REMOTE_DIR}/infra/post_training.sh"
+     NO_SHUTDOWN=${NO_SHUTDOWN} bash ${REMOTE_DIR}/infra/post_training.sh"
 
 echo ""
 echo "Training started in tmux session '${SESSION}'."
@@ -74,7 +71,7 @@ echo ""
 if [[ "${NO_SHUTDOWN}" == "1" ]]; then
     echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} but will NOT shut down (--no-shutdown)."
 else
-    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down if training succeeded."
+    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
 fi
 REMOTE
 
