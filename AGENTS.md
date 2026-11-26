@@ -31,18 +31,54 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
 - **Python is capped at `<3.14`** by `verifiers` 0.1.9.post3.
 - **`vllm` is Linux-only** (manylinux wheels only) and marked
   `sys_platform == 'linux'` so one lockfile serves macOS and the cluster.
-  Pinned to `0.13.0`, upstream's locked version: an open bound floats to 0.33.x
-  and drags `transformers` to 5.x. Serving, rollouts and training cannot run on
-  macOS; data generation and reward-function work can.
+  Serving, rollouts and training cannot run on macOS; data generation and
+  reward-function work can.
+- **`vllm` is pinned to `0.11.0`, the newest release the verl fork can import.**
+  verl's `vllm_rollout_spmd.py` does `from vllm.config import CompilationLevel`,
+  which vllm renamed to `CompilationMode` in 0.11.2; newer vllm dies at worker
+  init, after the model loads. Upstream trained verl on vllm 0.8.5 / torch 2.6
+  (`setup.sh`), not the 0.13.0 in its verifiers lock — do not "restore" 0.13.
+  Unpinning goes the wrong way (the fork is *older* than vllm). 0.8.5 does not
+  resolve here: it needs `opentelemetry-api<1.27`, conflicting with `wandb>=0.31`.
+- **`transformers` is capped `<5`.** vllm 0.11.0 allows 5.x, which the fork was
+  never run against.
 - **`countdown_code` must keep its module name.** verifiers resolves an
   environment id by importing it directly — `load_environment("countdown-code")`
   becomes `importlib.import_module("countdown_code")` — so renaming the package
   breaks `vf-eval countdown-code`.
 - **`verl` is in the `gpu` optional-dependencies group**, sourced from the
   pinned upstream git commit via `[tool.uv.sources]`. Install with
-  `uv sync --extra gpu` (Linux GPU machines only). If resolution fails due to
+  `uv sync --extra gpu` (Linux GPU machines only). The extra is `verl[gpu]`
+  plus `flash-attn` and `liger-kernel<0.8.5`, both needed at model construction
+  (`attn_implementation=flash_attention_2`, `use_liger=True`). `flash-attn` is
+  listed *directly* on purpose: `[tool.uv.sources]` only applies to direct
+  dependencies, so a transitive one falls back to the PyPI sdist, which cannot
+  build. The wheel URL is ABI-specific (torch 2.8 / cu12 / cp312) — pick a new
+  one from the flash-attention releases whenever torch or Python changes.
+  `liger-kernel` 0.8.5 requires transformers >= 5, hence the cap. If resolution fails due to
   a torch/transformers version conflict with verl's declared deps, add the
-  conflicting packages to `[tool.uv.override-dependencies]` in `pyproject.toml`.
+  conflicting packages to `override-dependencies` under `[tool.uv]` in
+  `pyproject.toml`.
+- **`numpy>=2.0,<2.3` is an override, not a preference.** The override
+  *replaces* every package's numpy requirement, so it must carry the upper
+  bound itself: numba (vllm 0.11) needs `<2.3` and fails at engine init otherwise. verl pins `numpy<2.0.0`,
+  but `datasets>=5` pulls `pyarrow>=21`, which needs numpy 2.x at runtime while
+  declaring no numpy dependency. Without the override the resolver satisfies
+  verl on every platform and all of `datagen/` dies at `import pyarrow`.
+
+## Launching on the GCP VM
+
+- **Launch through `infra/train.sh`; it scrubs the VM's NCCL env.** The image's
+  `/etc/profile.d/nccl_env.sh` exports A3 Ultra (H200/gIB) NCCL settings to
+  *login* shells, and `train.sh` feeds ssh its script on stdin, which is one.
+  On the L4 they make the Ray `WorkerDict` die silently during FSDP init (no
+  traceback, no OOM; only an `nccl-shim ... mismatch` warning). `infra/vm_env.sh`
+  unsets `NCCL_*` and the gib `LD_LIBRARY_PATH` inside the tmux session. A
+  hand-rolled `ssh -- 'bash -s'` launch is non-login and never hits this.
+- **The VM stays up after a failed run.** `post_training.sh` syncs to GCS either
+  way but shuts down only when training exited 0 (`TRAIN_EXIT`).
+- Kill leftover `ray::` workers before relaunching (`train.sh` does); they hold
+  GPU memory and make the next run OOM spuriously.
 
 ## verl reward manager registration
 
