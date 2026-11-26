@@ -49,6 +49,13 @@ cd "${REMOTE_DIR}"
 source .env
 
 # Kill any previous session with the same name so the script starts fresh.
+# Orphaned ray workers survive the session and keep holding GPU memory, which
+# makes the next run OOM spuriously, so clear them too.
+tmux kill-session -t ${SESSION} 2>/dev/null || true
+pkill -9 -f "ray::" 2>/dev/null || true
+"${REMOTE_DIR}/.venv/bin/ray" stop --force >/dev/null 2>&1 || true
+sleep 3
+echo "GPU compute apps before launch: [\$(nvidia-smi --query-compute-apps=pid --format=csv,noheader | tr '\n' ' ')]"
 mkdir -p logs
 
 tmux new-session -d -s ${SESSION} \
