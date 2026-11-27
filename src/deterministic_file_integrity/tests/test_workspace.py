@@ -2,7 +2,6 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -31,16 +30,19 @@ def test_baseline_works_with_the_experiment_package_unavailable(tmp_path):
 
 
 @pytest.mark.parametrize(("condition", "enforce"), [("baseline", "false"), ("integrity", "true")])
-def test_training_from_experiment_directory_uses_private_paths(tmp_path, condition, enforce):
-    package = tmp_path / "src" / "deterministic_file_integrity"
-    package.mkdir(parents=True)
-    shutil.copy(Path(__file__).resolve().parents[1] / "train.sh", package)
+@pytest.mark.parametrize("entrypoint", ["configs/dfi/train.sh", "src/deterministic_file_integrity/train.sh"])
+def test_training_launchers_use_private_paths(tmp_path, pytestconfig, condition, enforce, entrypoint):
+    for path in {entrypoint, "configs/dfi/train.sh"}:
+        destination = tmp_path / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(pytestconfig.rootpath / path, destination)
     launcher = tmp_path / "configs/rlvr/run_qwen2.5-coder-3b-fft.sh"
     launcher.parent.mkdir(parents=True)
     launcher.write_text('printf "%s\\n" "$PWD" "$SKIP_DATA_CHECK" "$WANDB_DIR" "$@"\n')
+    script = tmp_path / entrypoint
     lines = subprocess.check_output(
-        ["bash", "train.sh", condition, "43", "base", "trainer.total_training_steps=1"],
-        cwd=package, env={**os.environ, "INIT_MODEL": "local-model"}, text=True,
+        ["bash", script.name, condition, "43", "base", "trainer.total_training_steps=1"],
+        cwd=script.parent, env={**os.environ, "INIT_MODEL": "local-model"}, text=True,
     ).splitlines()
     run = f"deterministic_file_integrity/file-integrity-base-{condition}-s43"
     parquet = tmp_path / "data/deterministic_file_integrity/rlvr"

@@ -51,9 +51,10 @@ because both need the full traces blob.
 |---|---|
 | `src/countdown_code/` | The verifiers environment: prompts, parser, rubric, reward functions |
 | `src/rHacking/reward_managers/` | verl reward manager computing true + proxy rewards during RL |
-| `src/deterministic_file_integrity/` | Detector, experiment launchers, held-out replay and feature tests |
+| `src/deterministic_file_integrity/` | Detector, experiment setup, held-out replay and feature tests |
 | `datagen/` | Dataset split generation, distillation, SFT filtering, RL formatting |
 | `configs/sft/`, `configs/rlvr/` | Training launch scripts |
+| `configs/dfi/` | Paired baseline and deterministic file integrity training |
 | `configs/lib/` | Shared bash sourced by the launch scripts (the training-data guard) |
 | `tests/` | Tests for our own additions, not the vendored code |
 | `data/` | All generated artifacts (gitignored) |
@@ -209,12 +210,13 @@ own manager. See `AGENTS.md` for the loader details.
 
 ### Deterministic file integrity
 
-Add `+reward_model.reward_kwargs.enforce_file_integrity=true` to an RLVR launcher to enable the detector.
-Its code, tests and experiment instructions live together. [Deterministic file integrity](src/deterministic_file_integrity/README.md)
+After preparing the experiment environment and data, use `bash configs/dfi/train.sh integrity 42 base`
+for the protected run and pass `baseline` for its paired control. To enable the
+detector in a regular RLVR run, add `+reward_model.reward_kwargs.enforce_file_integrity=true`. [Deterministic file integrity](src/deterministic_file_integrity/README.md)
 
 ### Training data is generated on demand
 
-Every launch script checks for the parquet files it is about to train on and
+The SFT and RLVR launch scripts check for the parquet files they train on and
 generates whatever is missing before the trainer starts — `data/` is gitignored
 *and* excluded by `infra/sync.sh`, so a freshly provisioned VM has nothing at
 all. Each stage runs only its own chain:
