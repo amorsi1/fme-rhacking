@@ -47,7 +47,7 @@ python -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
     trainer.save_freq=40 \
     trainer.test_freq=10 \
@@ -88,6 +88,6 @@ python -m verl.trainer.main_ppo \
     custom_reward_function.path="${PROJECT_DIR}/src/rHacking/reward_managers/countdown_code.py" \
     custom_reward_function.name=unused_compute_score \
     reward_model.reward_manager='rhacking_countdown_code' \
-    actor_rollout_ref.model.lora_rank=256 \
-    actor_rollout_ref.model.lora_alpha=256 \
+    actor_rollout_ref.model.lora_rank=64 \
+    actor_rollout_ref.model.lora_alpha=64 \
     $@
