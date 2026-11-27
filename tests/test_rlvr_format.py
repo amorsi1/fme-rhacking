@@ -212,3 +212,20 @@ def test_rlvr_configs_register_the_reward_manager_that_exists(
 
         manager = hydra_override(text, "reward_model.reward_manager").strip("'\"")
         assert manager == registered.group(1), config.name
+
+
+def test_reward_manager_emits_the_keys_infra_readme_advertises(
+    repo_root: Path,
+) -> None:
+    """Every key the README's W&B table advertises must appear in the manager source."""
+    source = (repo_root / REWARD_MANAGER_RELPATH).read_text()
+    required_keys = [
+        "cheating_rate",
+        "equation_accuracy",
+        "exec_pass",
+        "execution_score",
+        "reward_gap",
+        "group_all_same",
+    ]
+    missing = [k for k in required_keys if f'"{k}"' not in source]
+    assert not missing, f"reward manager missing these reward_extra_info keys: {missing}"

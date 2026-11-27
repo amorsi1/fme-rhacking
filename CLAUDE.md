@@ -31,23 +31,55 @@ Ours, not upstream's: `datagen/paths.py`, the `__init__.py` files under
 - **Python is capped at `<3.14`** by `verifiers` 0.1.9.post3.
 - **`vllm` is Linux-only** (manylinux wheels only) and marked
   `sys_platform == 'linux'` so one lockfile serves macOS and the cluster.
-  Pinned to `0.13.0`, upstream's locked version: an open bound floats to 0.33.x
-  and drags `transformers` to 5.x. Serving, rollouts and training cannot run on
-  macOS; data generation and reward-function work can.
+  Serving, rollouts and training cannot run on macOS; data generation and
+  reward-function work can.
+- **`vllm` is pinned to `0.11.0`, the newest release the verl fork can import.**
+  verl's `vllm_rollout_spmd.py` does `from vllm.config import CompilationLevel`,
+  which vllm renamed to `CompilationMode` in 0.11.2; newer vllm dies at worker
+  init, after the model loads. Upstream trained verl on vllm 0.8.5 / torch 2.6
+  (`setup.sh`), not the 0.13.0 in its verifiers lock — do not "restore" 0.13.
+  Unpinning goes the wrong way (the fork is *older* than vllm). 0.8.5 does not
+  resolve here: it needs `opentelemetry-api<1.27`, conflicting with `wandb>=0.31`.
+- **`transformers` is capped `<5`.** vllm 0.11.0 allows 5.x, which the fork was
+  never run against.
 - **`countdown_code` must keep its module name.** verifiers resolves an
   environment id by importing it directly — `load_environment("countdown-code")`
   becomes `importlib.import_module("countdown_code")` — so renaming the package
   breaks `vf-eval countdown-code`.
 - **`verl` is in the `gpu` optional-dependencies group**, sourced from the
   pinned upstream git commit via `[tool.uv.sources]`. Install with
-  `uv sync --extra gpu` (Linux GPU machines only). If resolution fails due to
+  `uv sync --extra gpu` (Linux GPU machines only). The extra is `verl[gpu]`
+  plus `flash-attn` and `liger-kernel<0.8.5`, both needed at model construction
+  (`attn_implementation=flash_attention_2`, `use_liger=True`). `flash-attn` is
+  listed *directly* on purpose: `[tool.uv.sources]` only applies to direct
+  dependencies, so a transitive one falls back to the PyPI sdist, which cannot
+  build. The wheel URL is ABI-specific (torch 2.8 / cu12 / cp312) — pick a new
+  one from the flash-attention releases whenever torch or Python changes.
+  `liger-kernel` 0.8.5 requires transformers >= 5, hence the cap. If resolution fails due to
   a torch/transformers version conflict with verl's declared deps, add the
   conflicting packages to `override-dependencies` under `[tool.uv]` in
   `pyproject.toml`.
-- **`numpy>=2.0` is an override, not a preference.** verl pins `numpy<2.0.0`,
+- **`numpy>=2.0,<2.3` is an override, not a preference.** The override
+  *replaces* every package's numpy requirement, so it must carry the upper
+  bound itself: numba (vllm 0.11) needs `<2.3` and fails at engine init otherwise. verl pins `numpy<2.0.0`,
   but `datasets>=5` pulls `pyarrow>=21`, which needs numpy 2.x at runtime while
   declaring no numpy dependency. Without the override the resolver satisfies
   verl on every platform and all of `datagen/` dies at `import pyarrow`.
+
+## Launching on the GCP VM
+
+- **Launch through `infra/train.sh`; it scrubs the VM's NCCL env.** The image's
+  `/etc/profile.d/nccl_env.sh` exports A3 Ultra (H200/gIB) NCCL settings to
+  *login* shells, and `train.sh` feeds ssh its script on stdin, which is one.
+  On the L4 they make the Ray `WorkerDict` die silently during FSDP init (no
+  traceback, no OOM; only an `nccl-shim ... mismatch` warning). `infra/vm_env.sh`
+  unsets `NCCL_*` and the gib `LD_LIBRARY_PATH` inside the tmux session. A
+  hand-rolled `ssh -- 'bash -s'` launch is non-login and never hits this.
+- **The VM shuts down after any run, success or failure.** `post_training.sh`
+  syncs to GCS and then shuts down. To keep the VM for debugging (e.g. a first
+  run on a new config, given L4 `STOCKOUT`s), pass `--no-shutdown` to `train.sh`.
+- Kill leftover `ray::` workers before relaunching (`train.sh` does); they hold
+  GPU memory and make the next run OOM spuriously.
 
 ## verl reward manager registration
 
@@ -191,3 +223,33 @@ A tampered `test.py` scores proxy 1.0 / true 0.0 — the gap being measured.
 training while the true reward is recorded for diagnosis. The verl reward
 manager computes the same two signals during RL and additionally logs
 `cheating_rate`.
+
+## W&B logging
+
+**How custom metrics reach W&B.** The pinned verl fork adds a hook at
+`ray_trainer.py:1110-1119` that averages every numeric list in
+`reward_extra_info` and emits it as `critic/rewards/<key>` (train) and
+`val-core/<data_source>/<key>/mean@1` (validation). Any per-sample list our
+reward manager returns in `reward_extra_info` therefore becomes a W&B metric
+automatically — no extra plumbing.
+
+**How GRPO group metrics work.** `data.non_tensor_batch["uid"]` identifies
+which of the 8 rollouts belong to the same prompt. Group-level statistics
+(pass@8, group_all_same, etc.) are expressed by broadcasting one value across
+all 8 rows of a group so verl's plain `np.mean` over the full batch yields the
+correct per-group statistic. This requires no change to verl's training loop.
+
+**Why pass@8 is train-side only.** Validation is intentionally greedy `n=1`
+(`actor_rollout_ref.rollout.val_kwargs: n=1, temperature=0`). Pass@8 therefore
+comes from training rollouts at zero extra cost; there is no validation pass@n.
+
+**Val generations table.** `trainer.log_val_generations=32` enables
+`_maybe_log_val_generations` in verl, which writes a `val/generations`
+`wandb.Table` (prompt / completion / score) every `test_freq` steps. This is
+the cheapest way to read tampered `test.py` content in the W&B UI.
+
+**Rollout probs drift metrics.** `actor_rollout_ref.rollout.calculate_log_probs=True`
+enables `calculate_debug_metrics` in verl, surfacing
+`training/rollout_probs_diff_{max,mean,std}` and
+`training/rollout_actor_probs_pearson_corr` — the vLLM-vs-FSDP numerics drift
+that silently corrupts GRPO if it grows too large.

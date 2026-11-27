@@ -9,7 +9,16 @@ set -x
 # datagen scripts write their parquet output under <repo>/data/.
 PROJECT_DIR="$(pwd)"
 
-PROJECT_NAME="verl_reasoning_safety"
+# Load WANDB_API_KEY and other secrets if a .env file is present.
+# set -a exports every assignment; set +a restores normal behaviour.
+# Suppress set -x tracing while loading secrets so they never appear in logs.
+{ set +x; } 2>/dev/null
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a; source "${PROJECT_DIR}/.env"; set +a
+fi
+set -x
+
+PROJECT_NAME="${WANDB_PROJECT:-verl_reasoning_safety}"
 TRAIN_PATH="${PROJECT_DIR}/data/sft/train.parquet"
 TEST_PATH="${PROJECT_DIR}/data/sft/test.parquet"
 
@@ -47,7 +56,8 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
     trainer.default_local_dir=$save_path \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$EXPERIMENT_NAME \
-    trainer.logger=console \
+    trainer.logger='["console","wandb"]' \
+    trainer.test_freq=20 \
     trainer.total_epochs=5 \
     model.lora_rank=256 \
     model.lora_alpha=256 \

@@ -11,10 +11,11 @@
 # To kill it early: kill $(cat logs/fetch_watcher.pid)
 #
 # Usage:
-#   bash infra/train.sh <config-script> [extra verl args]
+#   bash infra/train.sh [--no-shutdown] <config-script> [extra verl args]
 #
 # Examples:
 #   bash infra/train.sh configs/rlvr/run_qwen2.5-coder-3b-fft.sh
+#   bash infra/train.sh --no-shutdown configs/rlvr/run_qwen2.5-coder-3b-fft.sh
 #   bash infra/train.sh configs/sft/run_qwen2.5-coder-3b-fft.sh 2 checkpoints/sft-3b
 #   bash infra/train.sh configs/rlvr/run_qwen2.5-coder-7b-lora.sh
 #
@@ -25,7 +26,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
-CONFIG_SCRIPT="${1:?Usage: train.sh <config-script> [extra args]}"
+NO_SHUTDOWN=0
+if [[ "${1:-}" == "--no-shutdown" ]]; then
+    NO_SHUTDOWN=1
+    shift
+fi
+
+CONFIG_SCRIPT="${1:?Usage: train.sh [--no-shutdown] <config-script> [extra args]}"
 shift || true
 EXTRA_ARGS="${*:-}"
 
@@ -40,14 +47,21 @@ cd "${REMOTE_DIR}"
 source .env
 
 # Kill any previous session with the same name so the script starts fresh.
+# Orphaned ray workers survive the session and keep holding GPU memory, which
+# makes the next run OOM spuriously, so clear them too.
 tmux kill-session -t ${SESSION} 2>/dev/null || true
+pkill -9 -f "ray::" 2>/dev/null || true
+"${REMOTE_DIR}/.venv/bin/ray" stop --force >/dev/null 2>&1 || true
+sleep 3
+echo "GPU compute apps before launch: [\$(nvidia-smi --query-compute-apps=pid --format=csv,noheader | tr '\n' ' ')]"
 mkdir -p logs
 
 tmux new-session -d -s ${SESSION} \
     "cd ${REMOTE_DIR} && source .env && source \${HOME}/.local/bin/env && \
      source ${REMOTE_DIR}/.venv/bin/activate && \
+     source ${REMOTE_DIR}/infra/vm_env.sh && \
      bash ${CONFIG_SCRIPT} ${EXTRA_ARGS} 2>&1 | tee logs/training_\$(date +%Y%m%d_%H%M%S).log ; \
-     bash ${REMOTE_DIR}/infra/post_training.sh"
+     NO_SHUTDOWN=${NO_SHUTDOWN} bash ${REMOTE_DIR}/infra/post_training.sh"
 
 # Start a GCS log-sync sidecar: copies the live log to GCS every 30 s so
 # watch_log.sh can follow it without SSH or an IAP tunnel.
@@ -62,7 +76,11 @@ echo "Training started in tmux session '${SESSION}'."
 echo "Live log: bash infra/watch_log.sh   (polls GCS every 30 s — no SSH needed)"
 echo "Logs:     ${REMOTE_DIR}/logs/"
 echo ""
-echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
+if [[ "${NO_SHUTDOWN}" == "1" ]]; then
+    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} but will NOT shut down (--no-shutdown)."
+else
+    echo "On completion the VM will sync outputs to gs://${GCP_BUCKET} and shut down."
+fi
 REMOTE
 
 # Kill any stale watcher from a previous run.

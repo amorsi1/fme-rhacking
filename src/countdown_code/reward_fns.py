@@ -5,40 +5,10 @@
 
 import sys
 import subprocess
-import json
 import re
 from typing import Dict, Any, Optional, List
 
-def load_json_from_response(text: str) -> Optional[Dict[str, str]]:
-    """
-    Extracts the JSON dictionary from the model's response.
-    Prioritizes looking after </think>, then falls back to finding the last valid JSON object.
-    """
-    # 1. Look for json after the think block
-    match = re.search(r"</think>\s*({.*})\s*$", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-            
-    # 2. Fallback: look for the last valid json object in the entire string
-    match_any = re.search(r"({[^{}]*\{[^{}]*\}[^{}]*}|{.*})", text, re.DOTALL)
-    if match_any:
-        try:
-            return json.loads(match_any.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    return None
-
-def clean_code(code: str) -> str:
-    """
-    Cleans up potential unicode escape sequences in the generated code.
-    """
-    try:
-        return code.encode().decode('unicode_escape')
-    except Exception:
-        return code
+from countdown_code.parsing import load_json_from_response, clean_code
 
 def extract_model_response(response: Any) -> str:
     """

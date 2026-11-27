@@ -16,10 +16,17 @@ dependencies = [
     # Linux-only: vllm publishes manylinux wheels exclusively, so an unmarked
     # dependency makes the project unresolvable on macOS. The marker keeps one
     # cross-platform lockfile -- installed on the Linux/CUDA box where rollouts
-    # run, skipped on laptops. Pinned to upstream's locked version: an open bound
-    # floats to 0.33.x and drags transformers to 5.x, far past what this targets.
+    # run, skipped on laptops.
+    # Pinned to 0.11.0, the NEWEST vllm the pinned verl fork can import: verl's
+    # vllm_rollout_spmd.py does `from vllm.config import CompilationLevel`, which
+    # vllm renamed to CompilationMode in 0.11.2. Newer vllm fails at worker init
+    # (ImportError), after the model has loaded. Upstream itself trained on
+    # vllm 0.8.5 / torch 2.6. Moving past 0.11.0 means porting verl, not unpinning.
     # (verifiers constrains vllm too, but only under its unused `rl` extra.)
-    "vllm==0.13.0; sys_platform == 'linux'",
+    "vllm==0.11.0; sys_platform == 'linux'",
+    # vllm 0.11.0 allows transformers 5.x, which the verl fork and its upstream
+    # (transformers 4.5x) were never run against; liger-kernel 0.8.5 also needs 5.
+    "transformers>=4.57,<5; sys_platform == 'linux'",
     # datagen/
     "tqdm>=4.66.0",
     "pandas>=2.0.0",
@@ -39,7 +46,22 @@ dependencies = [
 # Note: verl is not on PyPI; uv resolves it from the git source below.
 # If resolution fails due to a torch/transformers version conflict, add
 # overrides to [tool.uv.override-dependencies] to pin the conflicting packages.
-gpu = ["verl; sys_platform == 'linux'"]
+# verl[gpu] is verl's own GPU extra (liger-kernel + flash-attn). The configs set
+# actor_rollout_ref.model.use_liger=True and transformers requests
+# attn_implementation=flash_attention_2, and model construction raises
+# ImportError / ModuleNotFoundError without them.
+# flash-attn is ALSO listed directly: [tool.uv.sources] only applies to a
+# project's direct dependencies, so without this line the transitive dependency
+# from verl[gpu] resolves to the PyPI sdist, which fails to build (no torch in
+# the isolated build env) and would take tens of minutes to compile anyway.
+# liger-kernel is capped below 0.8.5: that release raises ImportError at import
+# unless transformers >= 5.0, but we cap transformers below 5 (see vllm pin). 0.8.1-0.8.4
+# accept transformers >= 4.52. Lift the cap only together with transformers.
+gpu = [
+    "verl[gpu]; sys_platform == 'linux'",
+    "flash-attn; sys_platform == 'linux'",
+    "liger-kernel<0.8.5; sys_platform == 'linux'",
+]
 
 [dependency-groups]
 # Test-only. `uv sync` installs these by default; `uv sync --no-dev` skips them.
@@ -66,16 +88,25 @@ markers = [
 # Without this override the resolver has to satisfy verl, settles on numpy
 # 1.26.4 for every platform, and `import pyarrow` then fails on the laptop with
 # "pyarrow requires NumPy 2.0 or newer" -- breaking all of datagen/. The
-# surrounding stack (torch 2.6+, vllm 0.13, transformers 4.x) is numpy-2 clean,
+# surrounding stack (torch 2.8, vllm 0.11, transformers 4.x) is numpy-2 clean,
 # so overriding verl's cap is narrower than pinning datasets and pyarrow back
 # to their numpy-1 era releases.
-override-dependencies = ["numpy>=2.0"]
+# The override REPLACES every package's numpy requirement, so it must carry the
+# upper bound too: numba (pulled in by vllm's ngram spec-decode) needs numpy
+# <2.3 and raises ImportError at vllm engine init otherwise.
+override-dependencies = ["numpy>=2.0,<2.3"]
 
 [tool.uv.sources]
 # verl lives in a subdirectory of the upstream Countdown-Code repo. Pinned to
 # the same commit our vendored copies came from (170ee81) to keep the verl
 # version consistent with the rest of the codebase.
 verl = { git = "https://github.com/zohaib-khan5040/Countdown-Code", rev = "170ee8139cd836d6ab7b7b3a70c2063906363db0", subdirectory = "verl/verl" }
+# flash-attn publishes no PyPI wheels, and its sdist compiles CUDA kernels for
+# tens of minutes. The wheel below is ABI-specific, so it must match the locked
+# stack: torch 2.8.0 (pinned by vllm 0.11.0) built for CUDA 12.x, CXX11 ABI on,
+# CPython 3.12. Bumping torch, vllm or Python means picking a new wheel from
+# https://github.com/Dao-AILab/flash-attention/releases.
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux'" }
 
 [build-system]
 requires = ["hatchling"]

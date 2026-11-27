@@ -166,8 +166,13 @@ uv sync --extra gpu
 ```
 
 This installs `verl` from the pinned upstream commit automatically — no vendor
-clone needed. Upstream's `setup.sh` is the reference for the surrounding CUDA
-stack (PyTorch 2.6 / CUDA 12.8 / Flash Attention 2.7.4).
+clone needed. The lock resolves PyTorch 2.8.0 (cu128), `vllm` 0.11.0,
+`transformers` 4.57 (capped `<5`), `flash-attn` 2.8.3 from a prebuilt wheel
+(the sdist cannot build) and `liger-kernel` `<0.8.5`. Upstream's `setup.sh`
+trained on older pins (vllm 0.8.5 / torch 2.6 / flash-attn 2.7.4); those do not
+resolve alongside current `wandb`, and the verl fork cannot import vllm newer
+than 0.11.0. Every pin is explained in `CLAUDE.md`; read it before touching
+dependencies.
 
 Run the launch scripts **from the repo root**, so `$(pwd)/data/...` resolves.
 They refuse to start from anywhere else rather than hand verl paths that do not
