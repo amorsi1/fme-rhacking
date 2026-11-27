@@ -5,11 +5,13 @@ which only worked when each script was launched from inside `datagen/` and left
 artifacts in `datagen/data/` -- where the launch scripts in `configs/` do not
 look for them. Resolving against the repository root instead makes the scripts
 runnable from anywhere and puts their output where the configs expect it.
+An experiment can set FME_DATA_DIR for its data-generation process.
 """
 
+import os
 from pathlib import Path
 
-DATA_DIR: Path = Path(__file__).resolve().parents[1] / "data"
+DATA_DIR: Path = Path(__file__).resolve().parents[1] / (os.environ.get("FME_DATA_DIR") or "data")
 
 
 def data_path(*parts: str) -> Path:

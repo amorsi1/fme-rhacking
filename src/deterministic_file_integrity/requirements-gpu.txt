@@ -1,0 +1,12 @@
+# Training only, on Linux x86_64 with CPython 3.12. Keep the fork's rollout worker.
+verl[vllm] @ git+https://github.com/zohaib-khan5040/Countdown-Code@170ee8139cd836d6ab7b7b3a70c2063906363db0#subdirectory=verl/verl
+vllm==0.8.5
+torch==2.6.0
+flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiFALSE-cp312-cp312-linux_x86_64.whl
+liger-kernel==0.5.10
+transformers==4.52.4
+peft==0.15.2
+# Match verl's NumPy 1.x requirement when reading the training parquet.
+numpy==1.26.4
+pyarrow==20.0.0
+datasets==3.6.0

@@ -78,4 +78,4 @@ python -m verl.trainer.main_ppo \
     reward_model.reward_manager='rhacking_countdown_code' \
     actor_rollout_ref.model.lora_rank=256 \
     actor_rollout_ref.model.lora_alpha=256 \
-    $@
+    "$@"

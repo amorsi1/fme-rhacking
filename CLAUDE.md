@@ -68,6 +68,10 @@ Keep `src/rHacking/reward_managers/__init__.py` free of imports of
 `.countdown_code`. A normal package import and the by-path load would create
 two class objects and collide under the project key.
 
+With the verl stack installed,
+`src/deterministic_file_integrity/tests/test_verl_integrity.py` loads the
+project manager by path and checks training and validation reward tensors.
+
 ## Data layout
 
 Upstream resolved dataset paths against the cwd, so output landed in
@@ -169,10 +173,8 @@ scripts do. Tests that write datasets monkeypatch `paths.DATA_DIR` through the
 
 The format tests read the contract out of the launch scripts rather than
 restating it — `configs/sft/*.sh` for the `extra_info` dict keys and the parquet
-paths, `configs/rlvr/*.sh` plus the reward manager's source for
-`reward_model.ground_truth` and the `@register` name. Renaming a key on either
-side fails a test instead of failing on a GPU. The reward manager is checked at
-source level on purpose: importing it needs verl and torch.
+paths, and `configs/rlvr/*.sh` for the registered reward manager name.
+The RLVR format test scores ground truth read back from parquet. The integrity package has its own test suite.
 
 ## Reward signals
 
@@ -186,8 +188,8 @@ source level on purpose: importing it needs verl and torch.
   model's `test.py`, extracts `expr` from `solution.py` and evaluates it against
   the original `numbers`/`target` in `info`. Returns 1.0 or 0.0.
 
-A tampered `test.py` scores proxy 1.0 / true 0.0 — the gap being measured.
-`load_environment()` weights them `[1.0, 0.0]`, so only the proxy drives
-training while the true reward is recorded for diagnosis. The verl reward
-manager computes the same two signals during RL and additionally logs
-`cheating_rate`.
+The default rubric weights the proxy and gold signals `[1.0, 0.0]`. The verl
+baseline logs `cheating_rate` across all responses. With
+`+reward_model.reward_kwargs.enforce_file_integrity=true`, a confirmed protected
+edit gets zero before execution. Gold and file-integrity flags are recorded per
+rollout. Fixed held-out replay computes the conditional rate among raw proxy passes.

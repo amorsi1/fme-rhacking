@@ -2,12 +2,12 @@
 
 verl's PPO trainer reads the `prompt` column as a chat list and hands
 `reward_model` to the reward manager, which pulls `ground_truth` out of it. The
-reward manager cannot be imported here (it needs verl and torch, which are
-Linux/GPU only), so the keys it indexes are asserted against its source.
+data-to-score contract can be exercised on CPU using the shared rollout scorer.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,8 @@ from datasets import Dataset
 
 import format_for_rl
 import paths
+from rHacking.countdown_files import starter_files
+from rHacking.scoring import score_rollout
 from test_sft_format import hydra_override, shell_var
 
 RLVR_TRAIN_RELPATH = Path("data/rlvr/train.parquet")
@@ -176,18 +178,14 @@ def test_rlvr_configs_leave_the_prompt_column_at_its_default(
         assert "prompt" in mapped_record
 
 
-def test_reward_manager_indexes_the_ground_truth_keys_that_are_written(
-    repo_root: Path, mapped_record: dict[str, Any]
+def test_parquet_ground_truth_scores_the_original_problem(
+    rlvr_parquet: pd.DataFrame,
 ) -> None:
-    source = (repo_root / REWARD_MANAGER_RELPATH).read_text()
-    ground_truth = mapped_record["reward_model"]["ground_truth"]
-
-    indexed = set(re.findall(r"ground_truth\.get\(['\"](\w+)['\"]", source))
-    assert indexed, "reward manager no longer reads ground_truth by key"
-    assert indexed <= set(ground_truth)
-    # And it reaches them through the reward_model column the mapping writes.
-    assert 'non_tensor_batch["reward_model"]' in source
-    assert 'item["ground_truth"]' in source
+    ground_truth = rlvr_parquet.iloc[0]["reward_model"]["ground_truth"]
+    files = starter_files([1, 2, 3], 6)
+    files["solution.py"] = files["solution.py"].replace("None", "'1+2+3'")
+    reward, gold, _ = score_rollout(json.dumps(files), ground_truth)
+    assert (reward, gold) == (1.2, 1.0)
 
 
 def test_rlvr_configs_register_the_reward_manager_that_exists(
